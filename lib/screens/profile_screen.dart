@@ -4,6 +4,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'gau_sevak_registration_screen.dart';
 import 'gaushala_registration_screen.dart';
+import 'settings_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -54,11 +55,6 @@ class ProfileScreen extends StatelessWidget {
                 } else if (isGaushalaOwner) {
                   badgeStr = 'गौशाला संचालक (Gaushala Owner)';
                 }
-
-                // Dynamic points and stats
-                final int rescuesCount = userData['rescues'] ?? (isGauSevak ? 1 : 0);
-                final int pointsCount = userData['points'] ?? (isGauSevak ? 100 : 0);
-                final String rankStr = userData['rank'] ?? (isGauSevak ? '#45' : 'N/A');
 
                 return SingleChildScrollView(
                   physics: const BouncingScrollPhysics(),
@@ -113,15 +109,7 @@ class ProfileScreen extends StatelessWidget {
                               badgeStr,
                               style: const TextStyle(fontSize: 13, color: Color(0xFF10B981), fontWeight: FontWeight.bold),
                             ),
-                            const SizedBox(height: 16),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                              children: [
-                                _buildProfileStat('रेस्क्यू (Rescues)', rescuesCount.toString()),
-                                _buildProfileStat('पॉइंट्स (Points)', pointsCount.toString()),
-                                _buildProfileStat('योगदान (Rank)', rankStr),
-                              ],
-                            ),
+
                           ],
                         ),
                       ),
@@ -174,8 +162,9 @@ class ProfileScreen extends StatelessWidget {
                               title: 'Settings',
                               subtitle: 'एप्लिकेशन सेटिंग्स',
                               onTap: () {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('⚙️ सेटिंग्स मॉड्यूल जल्द आ रहा है!')),
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (context) => const SettingsScreen()),
                                 );
                               },
                             ),
@@ -184,23 +173,65 @@ class ProfileScreen extends StatelessWidget {
                             // Logout
                             ElevatedButton.icon(
                               onPressed: () async {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text("लॉगआउट हो रहा है..."),
-                                    duration: Duration(seconds: 1),
-                                  ),
+                                final bool? confirmLogout = await showDialog<bool>(
+                                  context: context,
+                                  builder: (BuildContext context) {
+                                    return AlertDialog(
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(16),
+                                      ),
+                                      title: const Text(
+                                        'लॉगआउट की पुष्टि',
+                                        style: TextStyle(fontWeight: FontWeight.bold),
+                                      ),
+                                      content: const Text('क्या आप वास्तव में लॉगआउट करना चाहते हैं?'),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(context, false),
+                                          child: const Text(
+                                            'नहीं (No)',
+                                            style: TextStyle(color: Color(0xFF64748B)),
+                                          ),
+                                        ),
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(context, true),
+                                          child: const Text(
+                                            'हां (Yes)',
+                                            style: TextStyle(
+                                              color: Color(0xFFEF4444),
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                                  },
                                 );
-                                try {
-                                  await FirebaseAuth.instance.signOut();
-                                  await GoogleSignIn().signOut();
-                                } catch (e) {
+
+                                if (confirmLogout == true) {
                                   if (context.mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text("त्रुटि: ${e.toString()}"),
-                                        backgroundColor: Colors.red,
+                                      const SnackBar(
+                                        content: Text("लॉगआउट हो रहा है..."),
+                                        duration: Duration(seconds: 1),
                                       ),
                                     );
+                                  }
+                                  try {
+                                    await FirebaseAuth.instance.signOut();
+                                    final googleSignIn = GoogleSignIn();
+                                    if (await googleSignIn.isSignedIn()) {
+                                      await googleSignIn.signOut();
+                                    }
+                                  } catch (e) {
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text("त्रुटि: ${e.toString()}"),
+                                          backgroundColor: Colors.red,
+                                        ),
+                                      );
+                                    }
                                   }
                                 }
                               },
@@ -225,16 +256,6 @@ class ProfileScreen extends StatelessWidget {
                 );
               },
             ),
-    );
-  }
-
-  Widget _buildProfileStat(String title, String val) {
-    return Column(
-      children: [
-        Text(val, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-        const SizedBox(height: 2),
-        Text(title, style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
-      ],
     );
   }
 
