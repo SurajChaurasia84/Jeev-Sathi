@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'screens/auth_gate.dart';
 import 'screens/home_screen.dart';
 import 'screens/sos_screen.dart';
 import 'screens/profile_screen.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.dark,
@@ -29,13 +33,21 @@ class JeevSathiApp extends StatelessWidget {
           background: const Color(0xFFF8FAFC), // Slate 50
         ),
         fontFamily: 'Roboto',
+        appBarTheme: const AppBarTheme(
+          scrolledUnderElevation: 0,
+          surfaceTintColor: Colors.transparent,
+        ),
+        navigationBarTheme: const NavigationBarThemeData(
+          elevation: 0,
+          surfaceTintColor: Colors.transparent,
+        ),
         cardTheme: const CardThemeData(
           color: Colors.white,
           elevation: 2,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(20))),
         ),
       ),
-      home: const MainNavigationScreen(),
+      home: const AuthGate(),
     );
   }
 }
