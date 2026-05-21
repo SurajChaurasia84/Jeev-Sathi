@@ -33,72 +33,88 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     },
   ];
 
+  Future<void> _saveUserToFirestore({
+    required User user,
+    required GoogleSignInAccount googleUser,
+  }) async {
+    final docRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+    final docSnapshot = await docRef.get();
+    final existingData = docSnapshot.data();
+    final shouldCreateDefaults = !docSnapshot.exists;
+
+    final userData = <String, dynamic>{
+      'uid': user.uid,
+      'name': user.displayName ?? googleUser.displayName ?? '',
+      'displayName': user.displayName ?? googleUser.displayName ?? '',
+      'email': user.email ?? googleUser.email,
+      'phoneNumber': user.phoneNumber ?? '',
+      'photoUrl': user.photoURL ?? googleUser.photoUrl ?? '',
+      'updatedAt': FieldValue.serverTimestamp(),
+      'lastLoginAt': FieldValue.serverTimestamp(),
+    };
+
+    if (shouldCreateDefaults || existingData?['isGauSevak'] == null) {
+      userData['isGauSevak'] = false;
+    }
+    if (shouldCreateDefaults || existingData?['isGaushalaOwner'] == null) {
+      userData['isGaushalaOwner'] = false;
+    }
+    if (existingData?['createdAt'] == null) {
+      userData['createdAt'] = FieldValue.serverTimestamp();
+    }
+
+    await docRef.set(userData, SetOptions(merge: true));
+  }
+
   Future<void> _signInWithGoogle() async {
     setState(() {
       _isLoading = true;
     });
 
     try {
-      // 1. Trigger the Google Authentication flow.
       final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
-      
+
       if (googleUser == null) {
-        // The user canceled the sign-in.
-        setState(() {
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
         return;
       }
 
-      // 2. Obtain the auth details from the request.
       final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-
-      // 3. Create a new credential.
       final AuthCredential credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
 
-      // 4. Once signed in, return the UserCredential.
-      final UserCredential userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
+      final UserCredential userCredential =
+          await FirebaseAuth.instance.signInWithCredential(credential);
       final User? user = userCredential.user;
 
-      if (user != null && mounted) {
-        // Show progress indicating database sync
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("सिंक हो रहा है... कृपया प्रतीक्षा करें"),
-            duration: Duration(seconds: 1),
-            backgroundColor: Color(0xFF10B981),
-          ),
+      if (user != null) {
+        await _saveUserToFirestore(
+          user: user,
+          googleUser: googleUser,
         );
 
-        // 5. Save/update user details in Cloud Firestore.
-        final docRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
-        final docSnapshot = await docRef.get();
-
-        if (!docSnapshot.exists) {
-          await docRef.set({
-            'uid': user.uid,
-            'name': user.displayName ?? '',
-            'email': user.email ?? '',
-            'photoUrl': user.photoURL ?? '',
-            'createdAt': FieldValue.serverTimestamp(),
-            'lastLoginAt': FieldValue.serverTimestamp(),
-          });
-        } else {
-          await docRef.update({
-            'photoUrl': user.photoURL ?? '', // Update photo if changed
-            'lastLoginAt': FieldValue.serverTimestamp(),
-          });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('यूज़र डेटा सफलतापूर्वक सेव हो गया।'),
+              duration: Duration(seconds: 1),
+              backgroundColor: Color(0xFF10B981),
+            ),
+          );
         }
       }
     } catch (e) {
-      debugPrint("Google Sign-In Error: $e");
+      debugPrint('Google Sign-In Error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("लॉगिन असफल रहा: ${e.toString()}"),
+            content: Text('लॉगिन असफल रहा: ${e.toString()}'),
             backgroundColor: Colors.red,
           ),
         );
@@ -116,10 +132,41 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC), // Slate 50
-      body: SafeArea(
-        child: Stack(
-          children: [
-            Column(
+      body: Stack(
+        children: [
+          Positioned(
+            top: -132,
+            right: -112,
+            child: IgnorePointer(
+              child: Container(
+                height: 292,
+                width: 292,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFF10B981).withOpacity(0.1),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 22,
+            right: 22,
+            child: IgnorePointer(
+              child: Container(
+                height: 86,
+                width: 86,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: const Color(0xFF10B981).withOpacity(0.14),
+                    width: 16,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          SafeArea(
+            child: Column(
               children: [
                 const SizedBox(height: 20),
                 // App Logo Title Header
@@ -271,8 +318,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                 ),
                                 child: Image.asset(
                                   'assets/google_logo.png',
-                                  height: 20,
-                                  width: 20,
+                                  height: 16,
+                                  width: 16,
                                   errorBuilder: (context, error, stackTrace) => const Icon(
                                     Icons.g_mobiledata,
                                     color: Colors.blue,
@@ -304,8 +351,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 ),
               ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
