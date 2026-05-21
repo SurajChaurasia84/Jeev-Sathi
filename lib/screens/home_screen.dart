@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'gau_sevak_registration_screen.dart';
 import 'gaushala_registration_screen.dart';
+import 'donation_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -103,12 +104,16 @@ class HomeScreen extends StatelessWidget {
               ),
               const SizedBox(height: 24),
 
+              // Women Safety Banner (Optional highlight / CTA)
+              _buildWomenSafetyBanner(),
+              const SizedBox(height: 24),
+
               // 3. Reels Section Header
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text(
-                    '🎬 ट्रेंडिंग रील्स (Trending Reels)',
+                    'ट्रेंडिंग फीड्स (Trending Feeds)',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
                   ),
                   TextButton(
@@ -147,10 +152,6 @@ class HomeScreen extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(height: 24),
-
-              // 4. Women Safety Banner (Optional highlight / CTA)
-              _buildWomenSafetyBanner(),
               const SizedBox(height: 16),
             ],
           ),
@@ -198,40 +199,12 @@ class HomeScreen extends StatelessWidget {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              const SizedBox(height: 16),
-              // Progress Bar
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: const LinearProgressIndicator(
-                  value: 0.68,
-                  backgroundColor: Colors.white24,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                  minHeight: 8,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    '₹68,000 / ₹1,00,000 जमा हुए',
-                    style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 13),
-                  ),
-                  Text(
-                    '68% पूर्ण',
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.9),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
               ElevatedButton(
                 onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Donation flow triggered! Thank you for your support 🙏')),
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const DonationScreen()),
                   );
                 },
                 style: ElevatedButton.styleFrom(
@@ -423,7 +396,7 @@ class HomeScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'SOS Women Safety SOS',
+                    'महिला सुरक्षा (Women Safety SOS)',
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF991B1B)),
                   ),
                   SizedBox(height: 2),
