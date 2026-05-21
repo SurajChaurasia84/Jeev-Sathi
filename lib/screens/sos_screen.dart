@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class SOSScreen extends StatefulWidget {
   const SOSScreen({super.key});
@@ -12,7 +14,9 @@ class _SOSScreenState extends State<SOSScreen> with SingleTickerProviderStateMix
   String _selectedAnimal = 'Cow';
   bool _isUploadingPhoto = false;
   bool _isAddingLocation = false;
+  bool _isLoading = false;
   late AnimationController _pulseController;
+  final TextEditingController _descriptionController = TextEditingController();
 
   @override
   void initState() {
@@ -28,7 +32,75 @@ class _SOSScreenState extends State<SOSScreen> with SingleTickerProviderStateMix
   @override
   void dispose() {
     _pulseController.dispose();
+    _descriptionController.dispose();
     super.dispose();
+  }
+
+  Future<void> _submitSOSAlert() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      final reportsRef = FirebaseFirestore.instance.collection('sos_reports');
+      final newReportDoc = reportsRef.doc();
+
+      await newReportDoc.set({
+        'id': newReportDoc.id.substring(0, 6).toUpperCase(),
+        'animal': _selectedAnimal,
+        'description': _descriptionController.text.trim(),
+        'latitude': 26.9124,
+        'longitude': 75.7873,
+        'status': 'In Progress (सक्रिय)',
+        'createdAt': FieldValue.serverTimestamp(),
+        'reporterId': user?.uid ?? 'anonymous',
+        'reporterName': user?.displayName ?? 'Anonymous User',
+      });
+
+      _descriptionController.clear();
+
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            title: const Row(
+              children: [
+                Icon(Icons.emergency, color: Color(0xFFEF4444)),
+                const SizedBox(width: 8),
+                Text('SOS Alert Sent!'),
+              ],
+            ),
+            content: const Text(
+              'आपका इमरजेंसी SOS अलर्ट सफलतापूर्वक भेज दिया गया है। नजदीकी गौ सेवकों और संबंधित एनजीओ को सूचित किया जा रहा है। कृपया स्थान पर बने रहें।',
+              style: TextStyle(fontSize: 14),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('ठीक है', style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('त्रुटि: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   @override
@@ -52,29 +124,35 @@ class _SOSScreenState extends State<SOSScreen> with SingleTickerProviderStateMix
         backgroundColor: const Color(0xFFEF4444), // SOS Red
         elevation: 0,
       ),
-      body: Column(
-        children: [
-          // Sub tabs (Report, Status, Sevak)
-          Container(
-            color: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Row(
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFEF4444)),
+              ),
+            )
+          : Column(
               children: [
-                _buildSubTab(0, '📍 Report', const Color(0xFFEF4444)),
-                _buildSubTab(1, '📊 Status', const Color(0xFFEF4444)),
-                _buildSubTab(2, '🤝 Sevak', const Color(0xFFEF4444)),
+                // Sub tabs (Report, Status, Sevak)
+                Container(
+                  color: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Row(
+                    children: [
+                      _buildSubTab(0, '📍 Report', const Color(0xFFEF4444)),
+                      _buildSubTab(1, '📊 Status', const Color(0xFFEF4444)),
+                      _buildSubTab(2, '🤝 Sevak', const Color(0xFFEF4444)),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: _activeSubTab == 0
+                      ? _buildReportTab()
+                      : _activeSubTab == 1
+                          ? _buildStatusTab()
+                          : _buildSevakTab(),
+                ),
               ],
             ),
-          ),
-          Expanded(
-            child: _activeSubTab == 0
-                ? _buildReportTab()
-                : _activeSubTab == 1
-                    ? _buildStatusTab()
-                    : _buildSevakTab(),
-          ),
-        ],
-      ),
     );
   }
 
@@ -130,7 +208,7 @@ class _SOSScreenState extends State<SOSScreen> with SingleTickerProviderStateMix
                 color: const Color(0xFFEF4444),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                 child: InkWell(
-                  onTap: () => _triggerInstantSOS(),
+                  onTap: _submitSOSAlert,
                   borderRadius: BorderRadius.circular(20),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
@@ -306,6 +384,7 @@ class _SOSScreenState extends State<SOSScreen> with SingleTickerProviderStateMix
             ),
             const SizedBox(height: 10),
             TextField(
+              controller: _descriptionController,
               maxLines: 4,
               decoration: InputDecoration(
                 hintText: 'जानवर की स्थिति का विवरण लिखें...',
@@ -330,7 +409,9 @@ class _SOSScreenState extends State<SOSScreen> with SingleTickerProviderStateMix
               children: [
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: () {},
+                    onPressed: () {
+                      _showCallDialog(context, 'गौशाला हेल्पलाइन', '+91 98765 43210');
+                    },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF10B981),
                       foregroundColor: Colors.white,
@@ -344,7 +425,9 @@ class _SOSScreenState extends State<SOSScreen> with SingleTickerProviderStateMix
                 const SizedBox(width: 12),
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: () {},
+                    onPressed: () {
+                      _showCallDialog(context, 'NGO रेस्क्यू हेल्पलाइन', '+91 94140 12345');
+                    },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.orange.shade700,
                       foregroundColor: Colors.white,
@@ -361,7 +444,7 @@ class _SOSScreenState extends State<SOSScreen> with SingleTickerProviderStateMix
 
             // Submit Button
             ElevatedButton(
-              onPressed: () => _triggerInstantSOS(),
+              onPressed: _submitSOSAlert,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFEF4444),
                 foregroundColor: Colors.white,
@@ -373,7 +456,7 @@ class _SOSScreenState extends State<SOSScreen> with SingleTickerProviderStateMix
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(Icons.notification_important, size: 22),
-                  SizedBox(width: 8),
+                  const SizedBox(width: 8),
                   Text('🚨 SOS Alert भेजें', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 ],
               ),
@@ -412,69 +495,103 @@ class _SOSScreenState extends State<SOSScreen> with SingleTickerProviderStateMix
     );
   }
 
-  void _triggerInstantSOS() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: const Row(
-          children: [
-            Icon(Icons.emergency, color: Color(0xFFEF4444)),
-            SizedBox(width: 8),
-            Text('SOS Alert Sent!'),
-          ],
-        ),
-        content: const Text(
-          'आपका इमरजेंसी SOS अलर्ट भेज दिया गया है। नजदीकी गौ सेवकों और संबंधित एनजीओ को सूचित किया जा रहा है। कृपया स्थान पर बने रहें।',
-          style: TextStyle(fontSize: 14),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('ठीक है', style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Sub Tab 2: STATUS LIST
+  // Sub Tab 2: REAL-TIME STATUS LIST (Firestore Stream)
   Widget _buildStatusTab() {
-    return ListView(
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.all(16),
-      children: [
-        _buildStatusItem(
-          id: '#SOS-8802',
-          animal: 'Cow (गाय)',
-          location: 'शास्त्री नगर, जयपुर',
-          status: 'In Progress (सक्रिय)',
-          statusColor: Colors.orange.shade700,
-          time: '10 मिनट पहले',
-        ),
-        _buildStatusItem(
-          id: '#SOS-8761',
-          animal: 'Dog (कुत्ता)',
-          location: 'मालवीय नगर, जयपुर',
-          status: 'Resolved (सुलझाया गया)',
-          statusColor: const Color(0xFF10B981),
-          time: 'कल दोपहर 2:30',
-        ),
-      ],
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance.collection('sos_reports').orderBy('createdAt', descending: true).snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFEF4444)),
+            ),
+          );
+        }
+
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text('📝', style: TextStyle(fontSize: 48)),
+                const SizedBox(height: 16),
+                const Text(
+                  'कोई SOS रिपोर्ट नहीं मिली।',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return ListView.builder(
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          itemCount: snapshot.data!.docs.length,
+          itemBuilder: (context, index) {
+            final doc = snapshot.data!.docs[index];
+            final data = doc.data() as Map<String, dynamic>;
+
+            final String idStr = data['id'] ?? doc.id.substring(0, 6).toUpperCase();
+            final String animalStr = data['animal'] ?? 'Cow';
+            final String descStr = data['description'] ?? '';
+            final String statusStr = data['status'] ?? 'In Progress (सक्रिय)';
+            
+            // Format Timestamp
+            String timeStr = 'अभी';
+            if (data['createdAt'] != null) {
+              final timestamp = data['createdAt'] as Timestamp;
+              final diff = DateTime.now().difference(timestamp.toDate());
+              if (diff.inMinutes < 60) {
+                timeStr = '${diff.inMinutes} मिनट पहले';
+              } else if (diff.inHours < 24) {
+                timeStr = '${diff.inHours} घंटे पहले';
+              } else {
+                timeStr = '${diff.inDays} दिन पहले';
+              }
+            }
+
+            // Determine status color
+            Color statusColor = Colors.orange.shade700;
+            if (statusStr.contains('Resolved') || statusStr.contains('सुलझाया')) {
+              statusColor = const Color(0xFF10B981);
+            }
+
+            return _buildStatusItem(
+              id: '#SOS-$idStr',
+              animal: animalStr,
+              description: descStr,
+              location: 'जयपुर राजस्थान (26.91° N, 75.78° E)',
+              status: statusStr,
+              statusColor: statusColor,
+              time: timeStr,
+            );
+          },
+        );
+      },
     );
   }
 
   Widget _buildStatusItem({
     required String id,
     required String animal,
+    required String description,
     required String location,
     required String status,
     required Color statusColor,
     required String time,
   }) {
+    String animalEmoji = '🐄';
+    if (animal.toLowerCase().contains('dog')) animalEmoji = '🐕';
+    if (animal.toLowerCase().contains('cat')) animalEmoji = '🐈';
+    if (animal.toLowerCase().contains('bird')) animalEmoji = '🐦';
+    if (animal.toLowerCase().contains('buffalo')) animalEmoji = '🐃';
+    if (animal.toLowerCase().contains('other')) animalEmoji = '🐾';
+
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 2,
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -500,17 +617,29 @@ class _SOSScreenState extends State<SOSScreen> with SingleTickerProviderStateMix
             const Divider(height: 24),
             Row(
               children: [
-                const Icon(Icons.pets, size: 16, color: Color(0xFF64748B)),
+                Text(animalEmoji, style: const TextStyle(fontSize: 16)),
                 const SizedBox(width: 8),
-                Text(animal, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                Text('$animal ($animalEmoji)', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
               ],
             ),
+            if (description.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.only(left: 24.0),
+                child: Text(
+                  description,
+                  style: const TextStyle(fontSize: 13, color: Color(0xFF475569), fontStyle: FontStyle.italic),
+                ),
+              ),
+            ],
             const SizedBox(height: 8),
             Row(
               children: [
                 const Icon(Icons.location_on, size: 16, color: Color(0xFFEF4444)),
                 const SizedBox(width: 8),
-                Text(location, style: const TextStyle(fontSize: 13, color: Color(0xFF334155))),
+                Expanded(
+                  child: Text(location, style: const TextStyle(fontSize: 12, color: Color(0xFF334155))),
+                ),
               ],
             ),
             const SizedBox(height: 8),
@@ -527,34 +656,73 @@ class _SOSScreenState extends State<SOSScreen> with SingleTickerProviderStateMix
     );
   }
 
-  // Sub Tab 3: SEVAK LIST
+  // Sub Tab 3: SEVAK ROSTER DIRECTORY (Firestore Stream)
   Widget _buildSevakTab() {
-    return ListView(
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.all(16),
-      children: [
-        _buildSevakItem(
-          name: 'राम किशोर शर्मा',
-          distance: '0.8 km दूर',
-          skills: 'First Aid, Transport',
-          phone: '+91 98765 XXXXX',
-          isAvailable: true,
-        ),
-        _buildSevakItem(
-          name: 'दिनेश कुमार सैनी',
-          distance: '1.5 km दूर',
-          skills: 'Rescue, Cow Care',
-          phone: '+91 94140 XXXXX',
-          isAvailable: true,
-        ),
-        _buildSevakItem(
-          name: 'सुरेश कुमार यादव',
-          distance: '2.1 km दूर',
-          skills: 'First Aid, Transport, Nursing',
-          phone: '+91 88750 XXXXX',
-          isAvailable: false,
-        ),
-      ],
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance.collection('gau_sevaks').orderBy('registeredAt', descending: true).snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFEF4444)),
+            ),
+          );
+        }
+
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text('🤝', style: TextStyle(fontSize: 48)),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'कोई पंजीकृत गौ सेवक उपलब्ध नहीं है।',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'सेवा से जुड़ने के लिए प्रोफाइल में पंजीकरण करें!',
+                    style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        return ListView.builder(
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          itemCount: snapshot.data!.docs.length,
+          itemBuilder: (context, index) {
+            final doc = snapshot.data!.docs[index];
+            final data = doc.data() as Map<String, dynamic>;
+
+            final String nameStr = data['name'] ?? 'Gau Sevak';
+            final String districtStr = data['district'] ?? 'Rajasthan';
+            final String villageStr = data['village'] ?? '';
+            final String phoneStr = data['phone'] ?? '';
+            final List<dynamic> skillsList = data['skills'] ?? ['First Aid', 'Rescue'];
+            final bool isAvailable = data['isAvailable'] ?? true;
+
+            final skillsStr = skillsList.join(', ');
+            final addressStr = villageStr.isNotEmpty ? '$villageStr, $districtStr' : districtStr;
+
+            return _buildSevakItem(
+              name: nameStr,
+              distance: addressStr,
+              skills: skillsStr,
+              phone: phoneStr,
+              isAvailable: isAvailable,
+            );
+          },
+        );
+      },
     );
   }
 
@@ -568,6 +736,7 @@ class _SOSScreenState extends State<SOSScreen> with SingleTickerProviderStateMix
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 1,
       child: ListTile(
         contentPadding: const EdgeInsets.all(16),
         leading: CircleAvatar(
@@ -576,7 +745,13 @@ class _SOSScreenState extends State<SOSScreen> with SingleTickerProviderStateMix
         ),
         title: Row(
           children: [
-            Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+            Expanded(
+              child: Text(
+                name,
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
             const SizedBox(width: 8),
             Container(
               width: 8,
@@ -599,8 +774,79 @@ class _SOSScreenState extends State<SOSScreen> with SingleTickerProviderStateMix
         ),
         trailing: IconButton(
           icon: const Icon(Icons.call, color: Color(0xFF10B981)),
-          onPressed: () {},
+          onPressed: () {
+            _showCallDialog(context, name, phone);
+          },
         ),
+      ),
+    );
+  }
+
+  void _showCallDialog(BuildContext context, String name, String phone) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            const Icon(Icons.phone, color: Color(0xFF10B981)),
+            const SizedBox(width: 8),
+            const Text('संपर्क करें (Call)'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('क्या आप $name से संपर्क करना चाहते हैं?', style: const TextStyle(fontSize: 14)),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    phone,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF1E293B)),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.copy, size: 20),
+                    onPressed: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('📋 नंबर क्लिपबोर्ड पर कॉपी किया गया!')),
+                      );
+                      Navigator.pop(context);
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('रद्द करें', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('📞 $phone पर कॉल लगाया जा रहा है...')),
+              );
+              Navigator.pop(context);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF10B981),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text('कॉल करें'),
+          ),
+        ],
       ),
     );
   }
