@@ -68,7 +68,7 @@ class _SOSScreenState extends State<SOSScreen> with SingleTickerProviderStateMix
             title: const Row(
               children: [
                 Icon(Icons.emergency, color: Color(0xFFEF4444)),
-                const SizedBox(width: 8),
+                SizedBox(width: 8),
                 Text('SOS Alert Sent!'),
               ],
             ),
@@ -204,7 +204,7 @@ class _SOSScreenState extends State<SOSScreen> with SingleTickerProviderStateMix
               scale: _pulseController,
               child: Card(
                 elevation: 6,
-                shadowColor: const Color(0xFFEF4444).withOpacity(0.3),
+                shadowColor: const Color(0xFFEF4444).withValues(alpha: 0.3),
                 color: const Color(0xFFEF4444),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                 child: InkWell(
@@ -223,7 +223,7 @@ class _SOSScreenState extends State<SOSScreen> with SingleTickerProviderStateMix
                         const SizedBox(height: 4),
                         Text(
                           'टैप करें — Nearby Sevaks को Alert करें',
-                          style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 13),
+                          style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 13),
                         ),
                       ],
                     ),
@@ -456,7 +456,7 @@ class _SOSScreenState extends State<SOSScreen> with SingleTickerProviderStateMix
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(Icons.notification_important, size: 22),
-                  const SizedBox(width: 8),
+                  SizedBox(width: 8),
                   Text('🚨 SOS Alert भेजें', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 ],
               ),
@@ -604,7 +604,7 @@ class _SOSScreenState extends State<SOSScreen> with SingleTickerProviderStateMix
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.1),
+                    color: statusColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
@@ -740,7 +740,7 @@ class _SOSScreenState extends State<SOSScreen> with SingleTickerProviderStateMix
       child: ListTile(
         contentPadding: const EdgeInsets.all(16),
         leading: CircleAvatar(
-          backgroundColor: const Color(0xFF10B981).withOpacity(0.1),
+          backgroundColor: const Color(0xFF10B981).withValues(alpha: 0.1),
           child: const Text('🤝', style: TextStyle(fontSize: 18)),
         ),
         title: Row(
