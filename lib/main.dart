@@ -5,6 +5,8 @@ import 'screens/auth_gate.dart';
 import 'screens/home_screen.dart';
 import 'screens/sos_screen.dart';
 import 'screens/profile_screen.dart';
+import 'dart:io' show Platform;
+import 'package:another_telephony/telephony.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -67,6 +69,23 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     const SOSScreen(),
     const ProfileScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _requestSmsPermissionOnStartup();
+  }
+
+  Future<void> _requestSmsPermissionOnStartup() async {
+    if (Platform.isAndroid) {
+      try {
+        final Telephony telephony = Telephony.instance;
+        await telephony.requestPhoneAndSmsPermissions;
+      } catch (e) {
+        debugPrint("Error requesting permissions on startup: $e");
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
