@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:geolocator/geolocator.dart';
 
 class SOSScreen extends StatefulWidget {
   const SOSScreen({super.key});
@@ -9,29 +10,136 @@ class SOSScreen extends StatefulWidget {
   State<SOSScreen> createState() => _SOSScreenState();
 }
 
-class _SOSScreenState extends State<SOSScreen> with SingleTickerProviderStateMixin {
+class _SOSScreenState extends State<SOSScreen> {
   int _activeSubTab = 0; // 0 = Report, 1 = Status, 2 = Sevak
   String _selectedAnimal = 'Cow';
   bool _isUploadingPhoto = false;
   bool _isAddingLocation = false;
   bool _isLoading = false;
-  late AnimationController _pulseController;
+  double? _latitude;
+  double? _longitude;
   final TextEditingController _descriptionController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 1),
-      lowerBound: 0.9,
-      upperBound: 1.1,
-    )..repeat(reverse: true);
+  }
+
+  Future<void> _getCurrentLocation() async {
+    setState(() {
+      _isAddingLocation = true;
+    });
+
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('कृपया अपने फोन की GPS/लोकेशन सेवा चालू करें।'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        setState(() {
+          _isAddingLocation = false;
+        });
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('स्थान अनुमति (Location permission) अस्वीकार कर दी गई।'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          setState(() {
+            _isAddingLocation = false;
+          });
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('स्थान अनुमति हमेशा के लिए अस्वीकार कर दी गई है। कृपया सेटिंग से अनुमति दें।'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        setState(() {
+          _isAddingLocation = false;
+        });
+        return;
+      }
+
+      Position position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 10),
+        ),
+      );
+
+      setState(() {
+        _latitude = position.latitude;
+        _longitude = position.longitude;
+        _isAddingLocation = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('📍 लाइव लोकेशन प्राप्त हो चुकी है: ${_latitude!.toStringAsFixed(4)}° N, ${_longitude!.toStringAsFixed(4)}° E'),
+            backgroundColor: const Color(0xFF10B981),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint("Error fetching location: $e");
+      try {
+        Position? lastPosition = await Geolocator.getLastKnownPosition();
+        if (lastPosition != null) {
+          setState(() {
+            _latitude = lastPosition.latitude;
+            _longitude = lastPosition.longitude;
+            _isAddingLocation = false;
+          });
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('📍 अंतिम ज्ञात स्थान प्राप्त किया गया: ${_latitude!.toStringAsFixed(4)}° N, ${_longitude!.toStringAsFixed(4)}° E'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+          return;
+        }
+      } catch (_) {}
+
+      setState(() {
+        _isAddingLocation = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('स्थान प्राप्त करने में विफल: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   @override
   void dispose() {
-    _pulseController.dispose();
     _descriptionController.dispose();
     super.dispose();
   }
@@ -50,8 +158,8 @@ class _SOSScreenState extends State<SOSScreen> with SingleTickerProviderStateMix
         'id': newReportDoc.id.substring(0, 6).toUpperCase(),
         'animal': _selectedAnimal,
         'description': _descriptionController.text.trim(),
-        'latitude': 26.9124,
-        'longitude': 75.7873,
+        'latitude': _latitude ?? 26.9124,
+        'longitude': _longitude ?? 75.7873,
         'status': 'In Progress (सक्रिय)',
         'createdAt': FieldValue.serverTimestamp(),
         'reporterId': user?.uid ?? 'anonymous',
@@ -199,39 +307,7 @@ class _SOSScreenState extends State<SOSScreen> with SingleTickerProviderStateMix
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Flashing Big Emergency SOS Button Card
-            ScaleTransition(
-              scale: _pulseController,
-              child: Card(
-                elevation: 6,
-                shadowColor: const Color(0xFFEF4444).withValues(alpha: 0.3),
-                color: const Color(0xFFEF4444),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                child: InkWell(
-                  onTap: _submitSOSAlert,
-                  borderRadius: BorderRadius.circular(20),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
-                    child: Column(
-                      children: [
-                        const Icon(Icons.warning, color: Colors.white, size: 48),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'EMERGENCY SOS',
-                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 22, letterSpacing: 1),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'टैप करें — Nearby Sevaks को Alert करें',
-                          style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 13),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
+
 
             // Select Animal Type
             const Text(
@@ -352,27 +428,29 @@ class _SOSScreenState extends State<SOSScreen> with SingleTickerProviderStateMix
                 side: const BorderSide(color: Color(0xFFE2E8F0)),
               ),
               child: ListTile(
-                onTap: () {
-                  setState(() {
-                    _isAddingLocation = true;
-                  });
-                  Future.delayed(const Duration(seconds: 1), () {
-                    if (mounted) {
-                      setState(() {
-                        _isAddingLocation = false;
-                      });
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('📍 लाइव लोकेशन प्राप्त हो चुकी है: 26.9124° N, 75.7873° E')),
-                      );
-                    }
-                  });
-                },
-                leading: const Icon(Icons.location_on, color: Color(0xFFEF4444), size: 28),
-                title: const Text('टैप करें — GPS से Location जोड़ें', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-                subtitle: const Text('सटीक रेस्क्यू के लिए आवश्यक', style: TextStyle(fontSize: 11)),
+                onTap: _isAddingLocation ? null : _getCurrentLocation,
+                leading: Icon(
+                  Icons.location_on,
+                  color: _latitude != null ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                  size: 28,
+                ),
+                title: Text(
+                  _latitude != null
+                      ? '📍 लाइव स्थान: ${_latitude!.toStringAsFixed(4)}, ${_longitude!.toStringAsFixed(4)}'
+                      : 'टैप करें — GPS से Location जोड़ें',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                ),
+                subtitle: Text(
+                  _latitude != null
+                      ? 'स्थान सफलतापूर्वक जोड़ा गया (GPS Coordinates Attached)'
+                      : 'सटीक रेस्क्यू के लिए आवश्यक',
+                  style: const TextStyle(fontSize: 11),
+                ),
                 trailing: _isAddingLocation
                     ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.arrow_forward_ios, size: 14),
+                    : (_latitude != null
+                        ? const Icon(Icons.check_circle, color: Color(0xFF10B981), size: 20)
+                        : const Icon(Icons.arrow_forward_ios, size: 14)),
               ),
             ),
             const SizedBox(height: 24),
@@ -404,43 +482,7 @@ class _SOSScreenState extends State<SOSScreen> with SingleTickerProviderStateMix
             ),
             const SizedBox(height: 24),
 
-            // Help Hotlines Buttons
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      _showCallDialog(context, 'गौशाला हेल्पलाइन', '+91 98765 43210');
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF10B981),
-                      foregroundColor: Colors.white,
-                      minimumSize: const Size(double.infinity, 50),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    icon: const Icon(Icons.call, size: 18),
-                    label: const Text('Call Gaushala', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      _showCallDialog(context, 'NGO रेस्क्यू हेल्पलाइन', '+91 94140 12345');
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange.shade700,
-                      foregroundColor: Colors.white,
-                      minimumSize: const Size(double.infinity, 50),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    icon: const Icon(Icons.call_made, size: 18),
-                    label: const Text('Call NGO', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
+
 
             // Submit Button
             ElevatedButton(
@@ -452,13 +494,9 @@ class _SOSScreenState extends State<SOSScreen> with SingleTickerProviderStateMix
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 elevation: 2,
               ),
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.notification_important, size: 22),
-                  SizedBox(width: 8),
-                  Text('🚨 SOS Alert भेजें', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                ],
+              child: const Text(
+                'Submit Report',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
             ),
             const SizedBox(height: 30),
@@ -497,8 +535,14 @@ class _SOSScreenState extends State<SOSScreen> with SingleTickerProviderStateMix
 
   // Sub Tab 2: REAL-TIME STATUS LIST (Firestore Stream)
   Widget _buildStatusTab() {
+    final user = FirebaseAuth.instance.currentUser;
+    final uid = user?.uid ?? 'anonymous';
+
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('sos_reports').orderBy('createdAt', descending: true).snapshots(),
+      stream: FirebaseFirestore.instance
+          .collection('sos_reports')
+          .where('reporterId', isEqualTo: uid)
+          .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(
@@ -524,12 +568,25 @@ class _SOSScreenState extends State<SOSScreen> with SingleTickerProviderStateMix
           );
         }
 
+        // Sort documents client-side by createdAt descending to avoid custom index requirement
+        final sortedDocs = List<QueryDocumentSnapshot>.from(snapshot.data!.docs);
+        sortedDocs.sort((a, b) {
+          final aData = a.data() as Map<String, dynamic>;
+          final bData = b.data() as Map<String, dynamic>;
+          final Timestamp? aTime = aData['createdAt'] as Timestamp?;
+          final Timestamp? bTime = bData['createdAt'] as Timestamp?;
+          if (aTime == null && bTime == null) return 0;
+          if (aTime == null) return 1;
+          if (bTime == null) return -1;
+          return bTime.compareTo(aTime);
+        });
+
         return ListView.builder(
           physics: const BouncingScrollPhysics(),
           padding: const EdgeInsets.all(16),
-          itemCount: snapshot.data!.docs.length,
+          itemCount: sortedDocs.length,
           itemBuilder: (context, index) {
-            final doc = snapshot.data!.docs[index];
+            final doc = sortedDocs[index];
             final data = doc.data() as Map<String, dynamic>;
 
             final String idStr = data['id'] ?? doc.id.substring(0, 6).toUpperCase();
@@ -557,11 +614,17 @@ class _SOSScreenState extends State<SOSScreen> with SingleTickerProviderStateMix
               statusColor = const Color(0xFF10B981);
             }
 
+            final double? lat = data['latitude'] is num ? (data['latitude'] as num).toDouble() : null;
+            final double? lng = data['longitude'] is num ? (data['longitude'] as num).toDouble() : null;
+            final String locationText = (lat != null && lng != null)
+                ? '📍 स्थान: ${lat.toStringAsFixed(4)}° N, ${lng.toStringAsFixed(4)}° E'
+                : 'जयपुर राजस्थान (26.91° N, 75.78° E)';
+
             return _buildStatusItem(
               id: '#SOS-$idStr',
               animal: animalStr,
               description: descStr,
-              location: 'जयपुर राजस्थान (26.91° N, 75.78° E)',
+              location: locationText,
               status: statusStr,
               statusColor: statusColor,
               time: timeStr,
