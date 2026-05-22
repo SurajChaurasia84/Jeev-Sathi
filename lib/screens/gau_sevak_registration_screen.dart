@@ -202,36 +202,10 @@ class _GauSevakRegistrationScreenState extends State<GauSevakRegistrationScreen>
                                   _isEmergencyAvailable = val;
                                 });
                               },
-                              activeColor: const Color(0xFF10B981),
+                              activeThumbColor: const Color(0xFF10B981),
                             ),
                           ],
                         ),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-
-                    // ID Proof Upload Card
-                    const Text(
-                      'Upload ID Proof',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF1E293B)),
-                    ),
-                    const SizedBox(height: 10),
-                    Card(
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        side: const BorderSide(color: Color(0xFFE2E8F0)),
-                      ),
-                      child: ListTile(
-                        leading: const Icon(Icons.file_upload, color: Color(0xFF10B981)),
-                        title: const Text('Aadhaar / Voter ID / Driving License', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                        subtitle: const Text('फ़ाइल अपलोड करें', style: TextStyle(fontSize: 10)),
-                        trailing: const Icon(Icons.arrow_forward_ios, size: 12),
-                        onTap: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('📄 फ़ाइल सफलता पूर्वक अपलोड की गई (Mock)')),
-                          );
-                        },
                       ),
                     ),
                     const SizedBox(height: 32),
