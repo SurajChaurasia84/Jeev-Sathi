@@ -673,16 +673,22 @@ class HomeScreen extends StatelessWidget {
       if (gPhone.isNotEmpty) phones.add(gPhone);
       if (fPhone.isNotEmpty) phones.add(fPhone);
 
+      final List<String> sanitizedPhones = phones
+          .map((p) => p.replaceAll(RegExp(r'\s+|-|\(|\)'), ''))
+          .where((p) => p.isNotEmpty)
+          .toList();
+
       bool smsSentSuccess = false;
-      if (Platform.isAndroid) {
+      if (Platform.isAndroid && sanitizedPhones.isNotEmpty) {
         final Telephony telephony = Telephony.instance;
-        final bool? permission = await telephony.requestPhoneAndSmsPermissions;
+        final bool? permission = await telephony.requestSmsPermissions;
         if (permission == true) {
           try {
-            for (final phone in phones) {
+            for (final phone in sanitizedPhones) {
               await telephony.sendSms(
                 to: phone,
                 message: finalMsg,
+                isMultipart: true,
               );
             }
             smsSentSuccess = true;
@@ -692,10 +698,12 @@ class HomeScreen extends StatelessWidget {
         }
       }
 
-      if (!smsSentSuccess && phones.isNotEmpty) {
+      if (!smsSentSuccess && sanitizedPhones.isNotEmpty) {
+        final separator = Platform.isAndroid ? ',' : ';';
+        final phonePath = sanitizedPhones.join(separator);
         final Uri smsUri = Uri(
           scheme: 'sms',
-          path: phones.join(','),
+          path: phonePath,
           queryParameters: <String, String>{
             'body': finalMsg,
           },
