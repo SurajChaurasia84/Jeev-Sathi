@@ -1,7 +1,10 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:image_picker/image_picker.dart';
+import '../services/cloudinary_service.dart';
 
 class SOSScreen extends StatefulWidget {
   const SOSScreen({super.key});
@@ -19,10 +22,79 @@ class _SOSScreenState extends State<SOSScreen> {
   double? _latitude;
   double? _longitude;
   final TextEditingController _descriptionController = TextEditingController();
+  
+  String? _uploadedImageUrl;
+  final ImagePicker _picker = ImagePicker();
+
+  Future<void> _pickAndUploadImage(ImageSource source) async {
+    try {
+      final XFile? pickedFile = await _picker.pickImage(
+        source: source,
+        imageQuality: 70,
+      );
+
+      if (pickedFile == null) return;
+
+      setState(() {
+        _isUploadingPhoto = true;
+      });
+
+      final File file = File(pickedFile.path);
+      final String url = await CloudinaryService.uploadImage(file);
+
+      setState(() {
+        _uploadedImageUrl = url;
+        _isUploadingPhoto = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('📸 फोटो सफलतापूर्वक अपलोड की गई!'),
+            backgroundColor: Color(0xFF10B981),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _isUploadingPhoto = false;
+      });
+      if (mounted) {
+        String errorMsg = e.toString();
+        if (errorMsg.contains('Cloudinary setup is incomplete')) {
+          errorMsg = 'क्लाउडिनरी सेटअप अधूरा है। कृपया Config फाइल सेट करें।';
+        } else if (errorMsg.startsWith('Exception: ')) {
+          errorMsg = errorMsg.replaceFirst('Exception: ', '');
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('फ़ोटो अपलोड करने में त्रुटि: $errorMsg'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  final List<DocumentSnapshot> _gauSevaks = [];
+  bool _isLoadingSevaks = false;
+  bool _hasMoreSevaks = true;
+  DocumentSnapshot? _lastSevakDocument;
+  late final ScrollController _sevakScrollController;
 
   @override
   void initState() {
     super.initState();
+    _sevakScrollController = ScrollController();
+    _sevakScrollController.addListener(() {
+      if (_sevakScrollController.position.pixels >=
+          _sevakScrollController.position.maxScrollExtent - 200) {
+        _loadMoreGauSevaks();
+      }
+    });
+    _loadMoreGauSevaks();
   }
 
   Future<void> _getCurrentLocation() async {
@@ -138,8 +210,56 @@ class _SOSScreenState extends State<SOSScreen> {
     }
   }
 
+  Future<void> _loadMoreGauSevaks() async {
+    if (_isLoadingSevaks || !_hasMoreSevaks) return;
+
+    setState(() {
+      _isLoadingSevaks = true;
+    });
+
+    try {
+      Query query = FirebaseFirestore.instance
+          .collection('gau_sevaks')
+          .orderBy('registeredAt', descending: true)
+          .limit(10);
+
+      if (_lastSevakDocument != null) {
+        query = query.startAfterDocument(_lastSevakDocument!);
+      }
+
+      final QuerySnapshot querySnapshot = await query.get();
+
+      if (querySnapshot.docs.length < 10) {
+        _hasMoreSevaks = false;
+      }
+
+      if (querySnapshot.docs.isNotEmpty) {
+        _lastSevakDocument = querySnapshot.docs.last;
+        setState(() {
+          _gauSevaks.addAll(querySnapshot.docs);
+        });
+      }
+    } catch (e) {
+      debugPrint("Error loading gau sevaks: $e");
+    } finally {
+      setState(() {
+        _isLoadingSevaks = false;
+      });
+    }
+  }
+
+  Future<void> _refreshGauSevaks() async {
+    setState(() {
+      _gauSevaks.clear();
+      _lastSevakDocument = null;
+      _hasMoreSevaks = true;
+    });
+    await _loadMoreGauSevaks();
+  }
+
   @override
   void dispose() {
+    _sevakScrollController.dispose();
     _descriptionController.dispose();
     super.dispose();
   }
@@ -160,6 +280,7 @@ class _SOSScreenState extends State<SOSScreen> {
         'description': _descriptionController.text.trim(),
         'latitude': _latitude ?? 26.9124,
         'longitude': _longitude ?? 75.7873,
+        'imageUrl': _uploadedImageUrl,
         'status': 'In Progress (सक्रिय)',
         'createdAt': FieldValue.serverTimestamp(),
         'reporterId': user?.uid ?? 'anonymous',
@@ -167,6 +288,9 @@ class _SOSScreenState extends State<SOSScreen> {
       });
 
       _descriptionController.clear();
+      setState(() {
+        _uploadedImageUrl = null;
+      });
 
       if (mounted) {
         showDialog(
@@ -331,7 +455,7 @@ class _SOSScreenState extends State<SOSScreen> {
 
             // Upload Media Card
             const Text(
-              'फोटो / वीडियो जोड़ें (Add Photo/Video)',
+              'फोटो जोड़ें (Add Photo)',
               style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
             ),
             const SizedBox(height: 10),
@@ -339,21 +463,7 @@ class _SOSScreenState extends State<SOSScreen> {
               children: [
                 Expanded(
                   child: InkWell(
-                    onTap: () {
-                      setState(() {
-                        _isUploadingPhoto = true;
-                      });
-                      Future.delayed(const Duration(seconds: 1), () {
-                        if (mounted) {
-                          setState(() {
-                            _isUploadingPhoto = false;
-                          });
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('📸 फोटो सफलतापूर्वक जोड़ी गई!')),
-                          );
-                        }
-                      });
-                    },
+                    onTap: () => _pickAndUploadImage(ImageSource.camera),
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 20),
                       decoration: BoxDecoration(
@@ -361,11 +471,11 @@ class _SOSScreenState extends State<SOSScreen> {
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(color: const Color(0xFFE2E8F0)),
                       ),
-                      child: Column(
+                      child: const Column(
                         children: [
-                          const Icon(Icons.camera_alt, color: Color(0xFF10B981), size: 28),
-                          const SizedBox(height: 8),
-                          const Text('Camera / कैमरा', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                          Icon(Icons.camera_alt, color: Color(0xFF10B981), size: 28),
+                          SizedBox(height: 8),
+                          Text('Camera / कैमरा', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                         ],
                       ),
                     ),
@@ -374,21 +484,7 @@ class _SOSScreenState extends State<SOSScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: InkWell(
-                    onTap: () {
-                      setState(() {
-                        _isUploadingPhoto = true;
-                      });
-                      Future.delayed(const Duration(seconds: 1), () {
-                        if (mounted) {
-                          setState(() {
-                            _isUploadingPhoto = false;
-                          });
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('🖼️ गैलरी से मीडिया जोड़ा गया!')),
-                          );
-                        }
-                      });
-                    },
+                    onTap: () => _pickAndUploadImage(ImageSource.gallery),
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 20),
                       decoration: BoxDecoration(
@@ -410,9 +506,63 @@ class _SOSScreenState extends State<SOSScreen> {
             ),
             if (_isUploadingPhoto)
               const Padding(
-                padding: EdgeInsets.only(top: 8.0),
-                child: LinearProgressIndicator(minHeight: 2),
+                padding: EdgeInsets.only(top: 12.0),
+                child: Column(
+                  children: [
+                    LinearProgressIndicator(
+                      color: Color(0xFFEF4444),
+                      backgroundColor: Color(0xFFFEE2E2),
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      'फोटो अपलोड हो रही है, कृपया प्रतीक्षा करें...',
+                      style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                    ),
+                  ],
+                ),
               ),
+            if (_uploadedImageUrl != null) ...[
+              const SizedBox(height: 12),
+              Stack(
+                children: [
+                  Container(
+                    height: 180,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      image: DecorationImage(
+                        image: NetworkImage(_uploadedImageUrl!),
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _uploadedImageUrl = null;
+                        });
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: const BoxDecoration(
+                          color: Colors.black54,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.close,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: 24),
 
             // Live Location Card
@@ -620,6 +770,8 @@ class _SOSScreenState extends State<SOSScreen> {
                 ? '📍 स्थान: ${lat.toStringAsFixed(4)}° N, ${lng.toStringAsFixed(4)}° E'
                 : 'जयपुर राजस्थान (26.91° N, 75.78° E)';
 
+            final String? imageUrlStr = data['imageUrl'];
+
             return _buildStatusItem(
               id: '#SOS-$idStr',
               animal: animalStr,
@@ -628,6 +780,7 @@ class _SOSScreenState extends State<SOSScreen> {
               status: statusStr,
               statusColor: statusColor,
               time: timeStr,
+              imageUrl: imageUrlStr,
             );
           },
         );
@@ -643,6 +796,7 @@ class _SOSScreenState extends State<SOSScreen> {
     required String status,
     required Color statusColor,
     required String time,
+    String? imageUrl,
   }) {
     String animalEmoji = '🐄';
     if (animal.toLowerCase().contains('dog')) animalEmoji = '🐕';
@@ -695,6 +849,59 @@ class _SOSScreenState extends State<SOSScreen> {
                 ),
               ),
             ],
+            if (imageUrl != null && imageUrl.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.network(
+                  imageUrl,
+                  height: 160,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      height: 160,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey.shade300),
+                      ),
+                      child: const Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.broken_image, color: Colors.grey, size: 36),
+                            SizedBox(height: 8),
+                            Text(
+                              'छवि लोड करने में विफल',
+                              style: TextStyle(color: Colors.grey, fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return Container(
+                      height: 160,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Center(
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFEF4444)),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
             const SizedBox(height: 8),
             Row(
               children: [
@@ -719,73 +926,85 @@ class _SOSScreenState extends State<SOSScreen> {
     );
   }
 
-  // Sub Tab 3: SEVAK ROSTER DIRECTORY (Firestore Stream)
+
+  // Sub Tab 3: SEVAK ROSTER DIRECTORY (Firestore Paginated List)
   Widget _buildSevakTab() {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('gau_sevaks').orderBy('registeredAt', descending: true).snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(
-            child: CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFEF4444)),
-            ),
-          );
-        }
+    if (_gauSevaks.isEmpty && _isLoadingSevaks) {
+      return const Center(
+        child: CircularProgressIndicator(
+          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFEF4444)),
+        ),
+      );
+    }
 
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text('🤝', style: TextStyle(fontSize: 48)),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'कोई पंजीकृत गौ सेवक उपलब्ध नहीं है।',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'सेवा से जुड़ने के लिए प्रोफाइल में पंजीकरण करें!',
-                    style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
+    if (_gauSevaks.isEmpty && !_isLoadingSevaks) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text('🤝', style: TextStyle(fontSize: 48)),
+              const SizedBox(height: 16),
+              const Text(
+                'कोई पंजीकृत गौ सेवक उपलब्ध नहीं है।',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                textAlign: TextAlign.center,
               ),
-            ),
-          );
-        }
+              const SizedBox(height: 8),
+              const Text(
+                'सेवा से जुड़ने के लिए प्रोफाइल में पंजीकरण करें!',
+                style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
-        return ListView.builder(
-          physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.all(16),
-          itemCount: snapshot.data!.docs.length,
-          itemBuilder: (context, index) {
-            final doc = snapshot.data!.docs[index];
-            final data = doc.data() as Map<String, dynamic>;
-
-            final String nameStr = data['name'] ?? 'Gau Sevak';
-            final String districtStr = data['district'] ?? 'Rajasthan';
-            final String villageStr = data['village'] ?? '';
-            final String phoneStr = data['phone'] ?? '';
-            final List<dynamic> skillsList = data['skills'] ?? ['First Aid', 'Rescue'];
-            final bool isAvailable = data['isAvailable'] ?? true;
-
-            final skillsStr = skillsList.join(', ');
-            final addressStr = villageStr.isNotEmpty ? '$villageStr, $districtStr' : districtStr;
-
-            return _buildSevakItem(
-              name: nameStr,
-              distance: addressStr,
-              skills: skillsStr,
-              phone: phoneStr,
-              isAvailable: isAvailable,
+    return RefreshIndicator(
+      onRefresh: _refreshGauSevaks,
+      color: const Color(0xFFEF4444),
+      child: ListView.builder(
+        controller: _sevakScrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        itemCount: _gauSevaks.length + (_hasMoreSevaks ? 1 : 0),
+        itemBuilder: (context, index) {
+          if (index == _gauSevaks.length) {
+            return const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16.0),
+              child: Center(
+                child: CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFEF4444)),
+                ),
+              ),
             );
-          },
-        );
-      },
+          }
+
+          final doc = _gauSevaks[index];
+          final data = doc.data() as Map<String, dynamic>;
+
+          final String nameStr = data['name'] ?? 'Gau Sevak';
+          final String districtStr = data['district'] ?? 'Rajasthan';
+          final String villageStr = data['village'] ?? '';
+          final String phoneStr = data['phone'] ?? '';
+          final List<dynamic> skillsList = data['skills'] ?? ['First Aid', 'Rescue'];
+          final bool isAvailable = data['isAvailable'] ?? true;
+
+          final skillsStr = skillsList.join(', ');
+          final addressStr = villageStr.isNotEmpty ? '$villageStr, $districtStr' : districtStr;
+
+          return _buildSevakItem(
+            name: nameStr,
+            distance: addressStr,
+            skills: skillsStr,
+            phone: phoneStr,
+            isAvailable: isAvailable,
+          );
+        },
+      ),
     );
   }
 
