@@ -49,5 +49,9 @@
 	<array>
 		<string>upi</string>
 	</array>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>This app requires access to your location to fetch coordinates for animal rescue reports.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>This app requires access to your location to fetch coordinates for animal rescue reports.</string>
 </dict>
 </plist>
