@@ -714,24 +714,6 @@ class HomeScreen extends StatelessWidget {
         }
       }
 
-      final newAlert = {
-        'senderUid': user.uid,
-        'senderName': senderName,
-        'emergencyContactName1': pName.isNotEmpty ? pName : null,
-        'emergencyContactPhone1': pPhone.isNotEmpty ? pPhone : null,
-        'emergencyContactName2': gName.isNotEmpty ? gName : null,
-        'emergencyContactPhone2': gPhone.isNotEmpty ? gPhone : null,
-        'emergencyContactName3': fName.isNotEmpty ? fName : null,
-        'emergencyContactPhone3': fPhone.isNotEmpty ? fPhone : null,
-        'message': finalMsg,
-        'location': currentPosition != null
-            ? '${currentPosition.latitude}° N, ${currentPosition.longitude}° E'
-            : 'Unavailable',
-        'createdAt': FieldValue.serverTimestamp(),
-      };
-
-      await FirebaseFirestore.instance.collection('emergency_sos_alerts').add(newAlert);
-
       // Dismiss send loader
       if (context.mounted && sendLoaderOpen) {
         Navigator.pop(context);
