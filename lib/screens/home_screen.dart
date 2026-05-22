@@ -5,6 +5,11 @@ import 'gau_sevak_registration_screen.dart';
 import 'doctor_registration_screen.dart';
 import 'donation_screen.dart';
 import 'emergency_contacts_screen.dart';
+import 'dart:async';
+import 'dart:io' show Platform;
+import 'package:another_telephony/telephony.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -421,6 +426,36 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
+  Widget _showLocationPromptDialog(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: const Row(
+        children: [
+          Icon(Icons.location_off, color: Color(0xFFEF4444)),
+          SizedBox(width: 8),
+          Text('स्थान सेवा बंद है', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        ],
+      ),
+      content: const Text(
+        'बेहतर सुरक्षा और सटीक ट्रैकिंग के लिए कृपया अपने फ़ोन का GPS/स्थान सेवा चालू करें।\n\nक्या आप स्थान सेवा चालू करना चाहते हैं या बिना स्थान के संदेश भेजना चाहते हैं?',
+        style: TextStyle(fontSize: 13, height: 1.4),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false), // Send without location
+          child: const Text('बिना स्थान के भेजें', style: TextStyle(color: Color(0xFF64748B))),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, true), // Open settings
+          child: const Text(
+            'सक्षम करें (Enable)',
+            style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.bold),
+          ),
+        ),
+      ],
+    );
+  }
+
   Future<void> _triggerWomenSafetySOS(BuildContext context) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
@@ -513,38 +548,13 @@ class HomeScreen extends StatelessWidget {
         return;
       }
 
-      // 3. Confirm triggering SOS Alert
+      // Show countdown of 5 seconds
       bool confirmSOS = false;
       if (context.mounted) {
         final bool? res = await showDialog<bool>(
           context: context,
-          builder: (context) => AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Row(
-              children: [
-                Icon(Icons.report_problem, color: Color(0xFFEF4444)),
-                SizedBox(width: 8),
-                Text('SOS अलर्ट की पुष्टि', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              ],
-            ),
-            content: const Text(
-              'क्या आप वाकई आपातकालीन अलर्ट भेजना चाहते हैं?\nयह संदेश आपके दर्ज किए गए आपातकालीन संपर्कों को भेजा जाएगा।',
-              style: TextStyle(fontSize: 13, height: 1.4),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('रद्द करें', style: TextStyle(color: Color(0xFF64748B))),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text(
-                  'अलर्ट भेजें',
-                  style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.bold),
-                ),
-              ),
-            ],
-          ),
+          barrierDismissible: false,
+          builder: (context) => const SOSCountdownDialog(),
         );
         confirmSOS = res == true;
       }
@@ -552,91 +562,92 @@ class HomeScreen extends StatelessWidget {
       if (!confirmSOS) return;
 
       final bool includeLocationSetting = data?['includeLocation'] ?? true;
-      String finalMsg = msg;
-      const String gpsCoords = '26.9124° N, 75.7873° E (GPS Live Coordinates)';
+      final senderName = data?['displayName'] ?? data?['name'] ?? user.displayName ?? 'Jeev Sathi User';
 
+      Position? currentPosition;
       if (includeLocationSetting) {
-        bool locationOnConfirmed = false;
-        if (context.mounted) {
-          final bool? gpsRes = await showDialog<bool>(
-            context: context,
-            barrierDismissible: false,
-            builder: (context) => AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              title: const Row(
-                children: [
-                  Icon(Icons.location_on, color: Color(0xFFEF4444)),
-                  SizedBox(width: 8),
-                  Text('GPS स्थान चालू करें', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                ],
-              ),
-              content: const Text(
-                'सटीक संकट अलर्ट संदेश के लिए कृपया सुनिश्चित करें कि आपके फोन का GPS (Location) चालू है।\n\nक्या स्थान चालू है?',
-                style: TextStyle(fontSize: 13, height: 1.4),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('रद्द करें', style: TextStyle(color: Color(0xFF64748B))),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  child: const Text(
-                    'हाँ, स्थान चालू करें',
-                    style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.bold),
+        bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+        if (!serviceEnabled) {
+          if (context.mounted) {
+            final bool? enableLocation = await showDialog<bool>(
+              context: context,
+              barrierDismissible: false,
+              builder: (context) => _showLocationPromptDialog(context),
+            );
+            if (enableLocation == true) {
+              await Geolocator.openLocationSettings();
+              // Give the user time to turn it on and return
+              await Future.delayed(const Duration(seconds: 2));
+              serviceEnabled = await Geolocator.isLocationServiceEnabled();
+            }
+          }
+        }
+
+        if (serviceEnabled) {
+          LocationPermission permission = await Geolocator.checkPermission();
+          if (permission == LocationPermission.denied) {
+            permission = await Geolocator.requestPermission();
+          }
+
+          if (permission == LocationPermission.always || permission == LocationPermission.whileInUse) {
+            bool gpsLoaderOpen = false;
+            if (context.mounted) {
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (context) => Center(
+                  child: Card(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 32.0, vertical: 24.0),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          CircularProgressIndicator(
+                            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFEF4444)),
+                          ),
+                          SizedBox(height: 16),
+                          Text(
+                            '📍 सटीक GPS स्थान प्राप्त किया जा रहा है...',
+                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
-              ],
-            ),
-          );
-          locationOnConfirmed = gpsRes == true;
-        }
+              );
+              gpsLoaderOpen = true;
+            }
 
-        if (!locationOnConfirmed) return;
-
-        // Show loading state dialog while fetching GPS coords
-        bool gpsLoaderOpen = false;
-        if (context.mounted) {
-          showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (context) => Center(
-              child: Card(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 32.0, vertical: 24.0),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFEF4444)),
-                      ),
-                      SizedBox(height: 16),
-                      Text(
-                        '📍 सटीक GPS स्थान प्राप्त किया जा रहा है...',
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
+            try {
+              currentPosition = await Geolocator.getCurrentPosition(
+                locationSettings: const LocationSettings(
+                  accuracy: LocationAccuracy.high,
+                  timeLimit: Duration(seconds: 8),
                 ),
-              ),
-            ),
-          );
-          gpsLoaderOpen = true;
+              );
+            } catch (e) {
+              debugPrint("Error fetching location: $e");
+              try {
+                currentPosition = await Geolocator.getLastKnownPosition();
+              } catch (_) {}
+            }
+
+            if (context.mounted && gpsLoaderOpen) {
+              Navigator.pop(context);
+              gpsLoaderOpen = false;
+            }
+          }
         }
-
-        // Simulate high-accuracy GPS fetching delay
-        await Future.delayed(const Duration(milliseconds: 1500));
-
-        if (context.mounted && gpsLoaderOpen) {
-          Navigator.pop(context);
-          gpsLoaderOpen = false;
-        }
-
-        finalMsg = "$msg\n\n📍 लाइव स्थान: $gpsCoords\n🔗 Google Maps Link: https://maps.google.com/?q=26.9124,75.7873";
       }
 
-      // Show trigger loader
+      String finalMsg = "🚨 आपातकालीन अलर्ट!\nप्रेषक: $senderName\n\n$msg";
+      if (currentPosition != null) {
+        finalMsg += "\n\n📍 लाइव स्थान: ${currentPosition.latitude}, ${currentPosition.longitude}\n🔗 Google Maps Link: https://maps.google.com/?q=${currentPosition.latitude},${currentPosition.longitude}";
+      }
+
+      // Show trigger/send loader
       bool sendLoaderOpen = false;
       if (context.mounted) {
         showDialog(
@@ -657,9 +668,47 @@ class HomeScreen extends StatelessWidget {
       if (gPhone.isNotEmpty) alertedContacts.add('$gName ($gPhone)');
       if (fPhone.isNotEmpty) alertedContacts.add('$fName ($fPhone)');
 
+      final List<String> phones = [];
+      if (pPhone.isNotEmpty) phones.add(pPhone);
+      if (gPhone.isNotEmpty) phones.add(gPhone);
+      if (fPhone.isNotEmpty) phones.add(fPhone);
+
+      bool smsSentSuccess = false;
+      if (Platform.isAndroid) {
+        final Telephony telephony = Telephony.instance;
+        final bool? permission = await telephony.requestPhoneAndSmsPermissions;
+        if (permission == true) {
+          try {
+            for (final phone in phones) {
+              await telephony.sendSms(
+                to: phone,
+                message: finalMsg,
+              );
+            }
+            smsSentSuccess = true;
+          } catch (e) {
+            debugPrint("Telephony error: $e");
+          }
+        }
+      }
+
+      if (!smsSentSuccess && phones.isNotEmpty) {
+        final Uri smsUri = Uri(
+          scheme: 'sms',
+          path: phones.join(','),
+          queryParameters: <String, String>{
+            'body': finalMsg,
+          },
+        );
+        if (await canLaunchUrl(smsUri)) {
+          await launchUrl(smsUri);
+          smsSentSuccess = true;
+        }
+      }
+
       final newAlert = {
         'senderUid': user.uid,
-        'senderName': user.displayName ?? 'Jeev Sathi User',
+        'senderName': senderName,
         'emergencyContactName1': pName.isNotEmpty ? pName : null,
         'emergencyContactPhone1': pPhone.isNotEmpty ? pPhone : null,
         'emergencyContactName2': gName.isNotEmpty ? gName : null,
@@ -667,20 +716,22 @@ class HomeScreen extends StatelessWidget {
         'emergencyContactName3': fName.isNotEmpty ? fName : null,
         'emergencyContactPhone3': fPhone.isNotEmpty ? fPhone : null,
         'message': finalMsg,
-        'location': gpsCoords,
+        'location': currentPosition != null
+            ? '${currentPosition.latitude}° N, ${currentPosition.longitude}° E'
+            : 'Unavailable',
         'createdAt': FieldValue.serverTimestamp(),
       };
 
       await FirebaseFirestore.instance.collection('emergency_sos_alerts').add(newAlert);
 
-      // Dismiss loader
+      // Dismiss send loader
       if (context.mounted && sendLoaderOpen) {
         Navigator.pop(context);
         sendLoaderOpen = false;
       }
 
       // Show Trigger Success Alert
-      if (context.mounted) {
+      if (context.mounted && smsSentSuccess) {
         showDialog(
           context: context,
           builder: (context) => AlertDialog(
@@ -723,6 +774,13 @@ class HomeScreen extends StatelessWidget {
             ],
           ),
         );
+      } else if (context.mounted && !smsSentSuccess) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('अलर्ट भेजने में विफल: SMS भेजने के लिए आवश्यक अनुमतियां नहीं मिलीं।'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
 
     } catch (e) {
@@ -740,5 +798,111 @@ class HomeScreen extends StatelessWidget {
         );
       }
     }
+  }
+}
+
+class SOSCountdownDialog extends StatefulWidget {
+  const SOSCountdownDialog({super.key});
+
+  @override
+  State<SOSCountdownDialog> createState() => _SOSCountdownDialogState();
+}
+
+class _SOSCountdownDialogState extends State<SOSCountdownDialog> {
+  int _secondsLeft = 5;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _startTimer();
+  }
+
+  void _startTimer() {
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_secondsLeft > 1) {
+        setState(() {
+          _secondsLeft--;
+        });
+      } else {
+        _timer?.cancel();
+        if (mounted) {
+          Navigator.pop(context, true); // true means countdown finished
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false, // Prevent dismissing by back button
+      child: AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Column(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Color(0xFFEF4444), size: 48),
+            SizedBox(height: 8),
+            Text(
+              'महिला सुरक्षा SOS अलर्ट',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF991B1B)),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'आपातकालीन संदेश 5 सेकंड में भेजा जाएगा...',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: Color(0xFF475569)),
+            ),
+            const SizedBox(height: 24),
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                SizedBox(
+                  width: 80,
+                  height: 80,
+                  child: CircularProgressIndicator(
+                    value: _secondsLeft / 5.0,
+                    strokeWidth: 6,
+                    backgroundColor: Colors.red.shade50,
+                    valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFEF4444)),
+                  ),
+                ),
+                Text(
+                  '$_secondsLeft',
+                  style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFFEF4444)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF64748B),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            ),
+            onPressed: () {
+              _timer?.cancel();
+              Navigator.pop(context, false); // false means cancelled
+            },
+            icon: const Icon(Icons.cancel, color: Colors.white, size: 16),
+            label: const Text('रद्द करें (Cancel)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
   }
 }
