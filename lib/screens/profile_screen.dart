@@ -143,12 +143,16 @@ class ProfileScreen extends StatelessWidget {
                                     subtitle: 'गौ सेवक लॉगिन',
                                     color: const Color(0xFF10B981),
                                     onTap: () {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(
-                                          content: Text('🔑 Gau Sevak Login clicked (Mock)'),
-                                          behavior: SnackBarBehavior.floating,
-                                        ),
-                                      );
+                                      if (isGauSevak) {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) => const GauSevakDashboardScreen(),
+                                          ),
+                                        );
+                                      } else {
+                                        _showGauSevakNotRegisteredModal(context);
+                                      }
                                     },
                                   ),
                                 ),
@@ -161,12 +165,16 @@ class ProfileScreen extends StatelessWidget {
                                     subtitle: 'डॉक्टर लॉगिन',
                                     color: const Color(0xFFEC4899),
                                     onTap: () {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(
-                                          content: Text('🔑 Doctor Login clicked (Mock)'),
-                                          behavior: SnackBarBehavior.floating,
-                                        ),
-                                      );
+                                      if (isDoctor) {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) => const DoctorDashboardScreen(),
+                                          ),
+                                        );
+                                      } else {
+                                        _showDoctorNotRegisteredModal(context);
+                                      }
                                     },
                                   ),
                                 ),
@@ -423,6 +431,256 @@ class ProfileScreen extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  void _showDoctorNotRegisteredModal(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          elevation: 10,
+          backgroundColor: Colors.white,
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEC4899).withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.medical_services_outlined,
+                    color: Color(0xFFEC4899),
+                    size: 40,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'पंजीकरण नहीं मिला',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'You are not registered as doctor, register to login.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Color(0xFF64748B),
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          side: const BorderSide(color: Color(0xFFE2E8F0)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text(
+                          'रद्द करें (Cancel)',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Color(0xFF64748B),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFEC4899),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: () {
+                          Navigator.pop(context); // Close dialog
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const DoctorRegistrationScreen()),
+                          );
+                        },
+                        child: const Text(
+                          'पंजीकरण करें (Register)',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showGauSevakNotRegisteredModal(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          elevation: 10,
+          backgroundColor: Colors.white,
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF10B981).withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.volunteer_activism_outlined,
+                    color: Color(0xFF10B981),
+                    size: 40,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'पंजीकरण नहीं मिला',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'You are not registered as Gau Sevak, register to login.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Color(0xFF64748B),
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          side: const BorderSide(color: Color(0xFFE2E8F0)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text(
+                          'रद्द करें (Cancel)',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Color(0xFF64748B),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF10B981),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: () {
+                          Navigator.pop(context); // Close dialog
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const GauSevakRegistrationScreen()),
+                          );
+                        },
+                        child: const Text(
+                          'पंजीकरण करें (Register)',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class DoctorDashboardScreen extends StatelessWidget {
+  const DoctorDashboardScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
+      appBar: AppBar(
+        title: const Text('🩺 Doctor Dashboard', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white)),
+        backgroundColor: const Color(0xFFEC4899),
+        foregroundColor: Colors.white,
+      ),
+      body: const Center(
+        child: Text(
+          'Doctor Dashboard (No data available)',
+          style: TextStyle(color: Color(0xFF64748B), fontSize: 14),
+        ),
+      ),
+    );
+  }
+}
+
+class GauSevakDashboardScreen extends StatelessWidget {
+  const GauSevakDashboardScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
+      appBar: AppBar(
+        title: const Text('🤝 Gau Sevak Dashboard', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white)),
+        backgroundColor: const Color(0xFF10B981),
+        foregroundColor: Colors.white,
+      ),
+      body: const Center(
+        child: Text(
+          'Gau Sevak Dashboard (No data available)',
+          style: TextStyle(color: Color(0xFF64748B), fontSize: 14),
         ),
       ),
     );
