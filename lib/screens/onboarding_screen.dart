@@ -56,8 +56,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     if (shouldCreateDefaults || existingData?['isGauSevak'] == null) {
       userData['isGauSevak'] = false;
     }
-    if (shouldCreateDefaults || existingData?['isGaushalaOwner'] == null) {
-      userData['isGaushalaOwner'] = false;
+    if (shouldCreateDefaults || existingData?['isDoctor'] == null) {
+      userData['isDoctor'] = false;
     }
     if (existingData?['createdAt'] == null) {
       userData['createdAt'] = FieldValue.serverTimestamp();
@@ -143,7 +143,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 width: 292,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: const Color(0xFF10B981).withOpacity(0.1),
+                  color: const Color(0xFF10B981).withValues(alpha: 0.1),
                 ),
               ),
             ),
@@ -158,7 +158,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: const Color(0xFF10B981).withOpacity(0.14),
+                    color: const Color(0xFF10B981).withValues(alpha: 0.14),
                     width: 16,
                   ),
                 ),
@@ -176,7 +176,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF10B981).withOpacity(0.1),
+                        color: const Color(0xFF10B981).withValues(alpha: 0.1),
                         shape: BoxShape.circle,
                       ),
                       child: const Text('🤝', style: TextStyle(fontSize: 22)),
@@ -211,7 +211,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         child: Card(
                           color: Colors.white,
                           elevation: 4,
-                          shadowColor: Colors.black.withOpacity(0.05),
+                          shadowColor: Colors.black.withValues(alpha: 0.05),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(32),
                             side: const BorderSide(color: Color(0xFFF1F5F9)),
@@ -224,7 +224,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                 // Feature Animated Icon
                                 CircleAvatar(
                                   radius: 64,
-                                  backgroundColor: const Color(0xFF10B981).withOpacity(0.08),
+                                  backgroundColor: const Color(0xFF10B981).withValues(alpha: 0.08),
                                   child: Text(
                                     _slides[index]['emoji']!,
                                     style: const TextStyle(fontSize: 64),
@@ -301,7 +301,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             backgroundColor: const Color(0xFF0F172A), // Premium Dark Slate
                             foregroundColor: Colors.white,
                             elevation: 4,
-                            shadowColor: Colors.black.withOpacity(0.15),
+                            shadowColor: Colors.black.withValues(alpha: 0.15),
                             minimumSize: const Size(double.infinity, 56),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(16),
