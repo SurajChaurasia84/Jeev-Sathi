@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'edit_profile_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -71,7 +72,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         iconColor: const Color(0xFF3B82F6),
                         title: 'Edit Profile',
                         subtitle: user?.displayName ?? 'Manage your display name',
-                        onTap: () => _showEditProfileDialog(context, user),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const EditProfileScreen()),
+                          );
+                        },
                       ),
                       _buildDivider(),
                       _buildSwitchTile(
@@ -363,80 +369,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _shareApp() {
     SharePlus.instance.share(
       ShareParams(
-        text: 'Download Jeev Sathi App to support animal rescue & welfare: https://play.google.com/store/apps/details?id=com.jeevsathi.app',
+        text: 'Download Jeev Sathi App to support animal rescue & welfare: https://play.google.com/store/apps/details?id=com.jeevsathi.sinux.app',
         title: 'Jeev Sathi App',
       ),
     );
   }
-
-  void _showEditProfileDialog(BuildContext context, User? user) {
-    final nameController = TextEditingController(text: user?.displayName ?? '');
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('Edit Profile', style: TextStyle(fontWeight: FontWeight.bold)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Display Name:', style: TextStyle(color: Color(0xFF64748B), fontSize: 12)),
-              const SizedBox(height: 4),
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  hintText: 'Enter your name',
-                  isDense: true,
-                ),
-              ),
-              const SizedBox(height: 12),
-              const Text('Email Address:', style: TextStyle(color: Color(0xFF64748B), fontSize: 12)),
-              const SizedBox(height: 4),
-              Text(
-                user?.email ?? 'Not Available',
-                style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14, color: Color(0xFF1E293B)),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B))),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                final newName = nameController.text.trim();
-                if (newName.isNotEmpty && user != null) {
-                  try {
-                    await user.updateDisplayName(newName);
-                    if (context.mounted) {
-                      Navigator.pop(context);
-                      _showSnackBar('Profile name updated successfully!');
-                    }
-                  } catch (e) {
-                    if (context.mounted) {
-                      _showSnackBar('Error: ${e.toString()}');
-                    }
-                  }
-                } else {
-                  Navigator.pop(context);
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF10B981),
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Save'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-
 
   Future<void> _launchPrivacyPolicy() async {
     final Uri url = Uri.parse('https://jeevsathi.org/privacy-policy');
