@@ -6,6 +6,8 @@ import 'gau_sevak_registration_screen.dart';
 import 'doctor_registration_screen.dart';
 import 'settings_screen.dart';
 import 'edit_profile_screen.dart';
+import 'emergency_contacts_screen.dart';
+import 'donation_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -199,6 +201,32 @@ class ProfileScreen extends StatelessWidget {
 
                             const SizedBox(height: 12),
                             _buildProfileOption(
+                              icon: Icons.emergency_share_outlined,
+                              title: 'Emergency SOS Contacts',
+                              subtitle: 'आपातकालीन संपर्क सेटअप करें',
+                              iconColor: const Color(0xFFEF4444),
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (context) => const EmergencyContactsScreen()),
+                                );
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                            _buildProfileOption(
+                              icon: Icons.favorite,
+                              title: 'Donate Now',
+                              subtitle: 'गौ माता सेवा कोष में सहयोग करें',
+                              iconColor: const Color(0xFFF97316),
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (context) => const DonationScreen()),
+                                );
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                            _buildProfileOption(
                               icon: Icons.settings,
                               title: 'Settings',
                               subtitle: 'एप्लिकेशन सेटिंग्स',
@@ -304,6 +332,7 @@ class ProfileScreen extends StatelessWidget {
     required IconData icon,
     required String title,
     required String subtitle,
+    Color iconColor = const Color(0xFF10B981),
     Color? trailingColor,
     required VoidCallback onTap,
   }) {
@@ -319,10 +348,10 @@ class ProfileScreen extends StatelessWidget {
         leading: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: const Color(0xFF10B981).withValues(alpha: 0.1),
+            color: iconColor.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(10),
           ),
-          child: Icon(icon, color: const Color(0xFF10B981), size: 20),
+          child: Icon(icon, color: iconColor, size: 20),
         ),
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF1E293B))),
         subtitle: Text(subtitle, style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
