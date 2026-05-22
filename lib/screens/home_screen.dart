@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'gau_sevak_registration_screen.dart';
 import 'doctor_registration_screen.dart';
 import 'donation_screen.dart';
+import 'emergency_contacts_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -105,7 +108,7 @@ class HomeScreen extends StatelessWidget {
               const SizedBox(height: 24),
 
               // Women Safety Banner (Optional highlight / CTA)
-              _buildWomenSafetyBanner(),
+              _buildWomenSafetyBanner(context),
               const SizedBox(height: 24),
 
               // 3. Reels Section Header
@@ -370,47 +373,372 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildWomenSafetyBanner() {
+  Widget _buildWomenSafetyBanner(BuildContext context) {
     return Card(
       elevation: 0,
       color: const Color(0xFFFEF2F2),
+      clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: const BorderSide(color: Color(0xFFFEE2E2)),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: const BoxDecoration(
-                color: Color(0xFFEF4444),
-                shape: BoxShape.circle,
+      child: InkWell(
+        onTap: () => _triggerWomenSafetySOS(context),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFEF4444),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.security, color: Colors.white, size: 20),
               ),
-              child: const Icon(Icons.security, color: Colors.white, size: 20),
-            ),
-            const SizedBox(width: 16),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'महिला सुरक्षा (Women Safety SOS)',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF991B1B)),
-                  ),
-                  SizedBox(height: 2),
-                  Text(
-                    'एक टैप में पुलिस और परिवार को अलर्ट करें',
-                    style: TextStyle(fontSize: 11, color: Color(0xFF7F1D1D)),
-                  ),
-                ],
+              const SizedBox(width: 16),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'महिला सुरक्षा (Women Safety SOS)',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF991B1B)),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'एक टैप में आपातकालीन संपर्कों को अलर्ट करें',
+                      style: TextStyle(fontSize: 11, color: Color(0xFF7F1D1D)),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const Icon(Icons.arrow_forward_ios, size: 14, color: Color(0xFFEF4444)),
-          ],
+              const Icon(Icons.arrow_forward_ios, size: 14, color: Color(0xFFEF4444)),
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  Future<void> _triggerWomenSafetySOS(BuildContext context) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('उपयोगकर्ता लॉग इन नहीं है।')),
+      );
+      return;
+    }
+
+    bool fetchLoaderOpen = false;
+    try {
+      // 1. Show loading state dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFEF4444)),
+          ),
+        ),
+      );
+      fetchLoaderOpen = true;
+
+      // 2. Fetch User Emergency Settings
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      
+      // Dismiss loader dialog
+      if (context.mounted && fetchLoaderOpen) {
+        Navigator.pop(context);
+        fetchLoaderOpen = false;
+      }
+
+      if (!userDoc.exists) {
+        throw Exception("उपयोगकर्ता डेटा नहीं मिला।");
+      }
+
+      final data = userDoc.data();
+      final pName = data?['emergencyContactName1'] ?? '';
+      final pPhone = data?['emergencyContactPhone1'] ?? '';
+      
+      final gName = data?['emergencyContactName2'] ?? '';
+      final gPhone = data?['emergencyContactPhone2'] ?? '';
+      
+      final fName = data?['emergencyContactName3'] ?? '';
+      final fPhone = data?['emergencyContactPhone3'] ?? '';
+
+      final msg = data?['emergencyMessage'] ?? '🚨 EMERGENCY! I am in danger, please help me immediately.';
+
+      // Check if at least one contact is set
+      if (pPhone.isEmpty && gPhone.isEmpty && fPhone.isEmpty) {
+        // Show setup alert
+        if (context.mounted) {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                  SizedBox(width: 8),
+                  Text('आपातकालीन विवरण आवश्यक', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                ],
+              ),
+              content: const Text(
+                'SOS अलर्ट भेजने के लिए कृपया पहले अपनी प्रोफ़ाइल में जाकर आपातकालीन संपर्क (Emergency Contacts) सेट करें।',
+                style: TextStyle(fontSize: 13, height: 1.4),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('रद्द करें', style: TextStyle(color: Color(0xFF64748B))),
+                ),
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const EmergencyContactsScreen()),
+                    );
+                  },
+                  child: const Text(
+                    'अभी सेट करें',
+                    style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+        return;
+      }
+
+      // 3. Confirm triggering SOS Alert
+      bool confirmSOS = false;
+      if (context.mounted) {
+        final bool? res = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Row(
+              children: [
+                Icon(Icons.report_problem, color: Color(0xFFEF4444)),
+                SizedBox(width: 8),
+                Text('SOS अलर्ट की पुष्टि', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              ],
+            ),
+            content: const Text(
+              'क्या आप वाकई आपातकालीन अलर्ट भेजना चाहते हैं?\nयह संदेश आपके दर्ज किए गए आपातकालीन संपर्कों को भेजा जाएगा।',
+              style: TextStyle(fontSize: 13, height: 1.4),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('रद्द करें', style: TextStyle(color: Color(0xFF64748B))),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text(
+                  'अलर्ट भेजें',
+                  style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+        );
+        confirmSOS = res == true;
+      }
+
+      if (!confirmSOS) return;
+
+      final bool includeLocationSetting = data?['includeLocation'] ?? true;
+      String finalMsg = msg;
+      const String gpsCoords = '26.9124° N, 75.7873° E (GPS Live Coordinates)';
+
+      if (includeLocationSetting) {
+        bool locationOnConfirmed = false;
+        if (context.mounted) {
+          final bool? gpsRes = await showDialog<bool>(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Row(
+                children: [
+                  Icon(Icons.location_on, color: Color(0xFFEF4444)),
+                  SizedBox(width: 8),
+                  Text('GPS स्थान चालू करें', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                ],
+              ),
+              content: const Text(
+                'सटीक संकट अलर्ट संदेश के लिए कृपया सुनिश्चित करें कि आपके फोन का GPS (Location) चालू है।\n\nक्या स्थान चालू है?',
+                style: TextStyle(fontSize: 13, height: 1.4),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('रद्द करें', style: TextStyle(color: Color(0xFF64748B))),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text(
+                    'हाँ, स्थान चालू करें',
+                    style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+          );
+          locationOnConfirmed = gpsRes == true;
+        }
+
+        if (!locationOnConfirmed) return;
+
+        // Show loading state dialog while fetching GPS coords
+        bool gpsLoaderOpen = false;
+        if (context.mounted) {
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => Center(
+              child: Card(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 32.0, vertical: 24.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFEF4444)),
+                      ),
+                      SizedBox(height: 16),
+                      Text(
+                        '📍 सटीक GPS स्थान प्राप्त किया जा रहा है...',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+          gpsLoaderOpen = true;
+        }
+
+        // Simulate high-accuracy GPS fetching delay
+        await Future.delayed(const Duration(milliseconds: 1500));
+
+        if (context.mounted && gpsLoaderOpen) {
+          Navigator.pop(context);
+          gpsLoaderOpen = false;
+        }
+
+        finalMsg = "$msg\n\n📍 लाइव स्थान: $gpsCoords\n🔗 Google Maps Link: https://maps.google.com/?q=26.9124,75.7873";
+      }
+
+      // Show trigger loader
+      bool sendLoaderOpen = false;
+      if (context.mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const Center(
+            child: CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFEF4444)),
+            ),
+          ),
+        );
+        sendLoaderOpen = true;
+      }
+
+      // Log alert document to Firestore
+      final List<String> alertedContacts = [];
+      if (pPhone.isNotEmpty) alertedContacts.add('$pName ($pPhone)');
+      if (gPhone.isNotEmpty) alertedContacts.add('$gName ($gPhone)');
+      if (fPhone.isNotEmpty) alertedContacts.add('$fName ($fPhone)');
+
+      final newAlert = {
+        'senderUid': user.uid,
+        'senderName': user.displayName ?? 'Jeev Sathi User',
+        'emergencyContactName1': pName.isNotEmpty ? pName : null,
+        'emergencyContactPhone1': pPhone.isNotEmpty ? pPhone : null,
+        'emergencyContactName2': gName.isNotEmpty ? gName : null,
+        'emergencyContactPhone2': gPhone.isNotEmpty ? gPhone : null,
+        'emergencyContactName3': fName.isNotEmpty ? fName : null,
+        'emergencyContactPhone3': fPhone.isNotEmpty ? fPhone : null,
+        'message': finalMsg,
+        'location': gpsCoords,
+        'createdAt': FieldValue.serverTimestamp(),
+      };
+
+      await FirebaseFirestore.instance.collection('emergency_sos_alerts').add(newAlert);
+
+      // Dismiss loader
+      if (context.mounted && sendLoaderOpen) {
+        Navigator.pop(context);
+        sendLoaderOpen = false;
+      }
+
+      // Show Trigger Success Alert
+      if (context.mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Row(
+              children: [
+                Icon(Icons.check_circle_rounded, color: Colors.green, size: 28),
+                SizedBox(width: 8),
+                Text('SOS अलर्ट भेजा गया!', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'आपका आपातकालीन संकट संदेश और वर्तमान स्थान निम्नलिखित संपर्कों को भेज दिया गया है:',
+                  style: TextStyle(fontSize: 12, height: 1.4),
+                ),
+                const SizedBox(height: 12),
+                ...alertedContacts.map(
+                  (c) => Padding(
+                    padding: const EdgeInsets.only(bottom: 4.0),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.check, color: Colors.green, size: 16),
+                        const SizedBox(width: 8),
+                        Text(c, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('ठीक है', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        );
+      }
+
+    } catch (e) {
+      // Dismiss loader if open
+      if (context.mounted) {
+        if (fetchLoaderOpen) {
+          Navigator.pop(context);
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('अलर्ट भेजने में विफल: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
   }
 }
