@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'gau_sevak_registration_screen.dart';
-import 'gaushala_registration_screen.dart';
+import 'doctor_registration_screen.dart';
 import 'donation_screen.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -16,7 +16,7 @@ class HomeScreen extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: const Color(0xFF10B981).withOpacity(0.1),
+                color: const Color(0xFF10B981).withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
               child: const Text('🤝', style: TextStyle(fontSize: 20)),
@@ -88,14 +88,14 @@ class HomeScreen extends StatelessWidget {
                   Expanded(
                     child: _buildActionCard(
                       context,
-                      title: 'गौशाला रजिस्टर करें',
-                      subtitle: 'Gaushala Registration',
-                      emoji: '🏡',
-                      gradient: const [Color(0xFF3B82F6), Color(0xFF2563EB)],
+                      title: 'डॉक्टर रजिस्टर करें',
+                      subtitle: 'Doctor Registration',
+                      emoji: '🩺',
+                      gradient: const [Color(0xFFEC4899), Color(0xFFBE185D)],
                       onTap: () {
                         Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (context) => const GaushalaRegistrationScreen()),
+                          MaterialPageRoute(builder: (context) => const DoctorRegistrationScreen()),
                         );
                       },
                     ),
@@ -183,7 +183,7 @@ class HomeScreen extends StatelessWidget {
                   Text(
                     'Gau Mata Seva Fund',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.9),
+                      color: Colors.white.withValues(alpha: 0.9),
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
                     ),
@@ -248,7 +248,7 @@ class HomeScreen extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: gradient.first.withOpacity(0.3),
+              color: gradient.first.withValues(alpha: 0.3),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -261,8 +261,8 @@ class HomeScreen extends StatelessWidget {
           children: [
             Container(
               padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
+              decoration: const BoxDecoration(
+                color: Colors.white,
                 shape: BoxShape.circle,
               ),
               child: Text(emoji, style: const TextStyle(fontSize: 20)),
@@ -277,7 +277,7 @@ class HomeScreen extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   subtitle,
-                  style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 10),
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 10),
                 ),
               ],
             )
@@ -318,7 +318,7 @@ class HomeScreen extends StatelessWidget {
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [Colors.transparent, Colors.black.withOpacity(0.8)],
+                    colors: [Colors.transparent, Colors.black.withValues(alpha: 0.8)],
                   ),
                 ),
                 padding: const EdgeInsets.all(12),
