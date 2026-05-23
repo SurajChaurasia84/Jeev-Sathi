@@ -1,5 +1,5 @@
 import 'package:flutter/services.dart' show rootBundle;
-import 'package:flutter/foundation.dart';
+
 
 class EnvLoader {
   static final Map<String, String> _env = {};
@@ -28,8 +28,7 @@ class EnvLoader {
           _env[key] = value;
         }
       }
-    } catch (e) {
-      debugPrint("Warning: Failed to load .env asset: $e");
+    } catch (_) {
     }
   }
 
