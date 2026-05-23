@@ -494,8 +494,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         if (await googleSignIn.isSignedIn()) {
           await googleSignIn.signOut();
         }
-      } catch (googleError) {
-        debugPrint('Google sign out error: $googleError');
+      } catch (_) {
       }
 
       // 3. Delete user account from Firebase Auth
