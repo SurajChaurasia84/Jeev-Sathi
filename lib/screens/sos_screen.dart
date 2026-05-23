@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/cloudinary_service.dart';
+import 'sos_report_detail_screen.dart';
 
 class SOSScreen extends StatefulWidget {
   const SOSScreen({super.key});
@@ -16,17 +17,16 @@ class SOSScreen extends StatefulWidget {
 class _SOSScreenState extends State<SOSScreen> {
   int _activeSubTab = 0; // 0 = Report, 1 = Status, 2 = Sevak
   String _selectedAnimal = 'Cow';
-  bool _isUploadingPhoto = false;
   bool _isAddingLocation = false;
   bool _isLoading = false;
   double? _latitude;
   double? _longitude;
   final TextEditingController _descriptionController = TextEditingController();
   
-  String? _uploadedImageUrl;
+  File? _localImageFile;
   final ImagePicker _picker = ImagePicker();
 
-  Future<void> _pickAndUploadImage(ImageSource source) async {
+  Future<void> _pickLocalImage(ImageSource source) async {
     try {
       final XFile? pickedFile = await _picker.pickImage(
         source: source,
@@ -36,40 +36,13 @@ class _SOSScreenState extends State<SOSScreen> {
       if (pickedFile == null) return;
 
       setState(() {
-        _isUploadingPhoto = true;
+        _localImageFile = File(pickedFile.path);
       });
-
-      final File file = File(pickedFile.path);
-      final String url = await CloudinaryService.uploadImage(file);
-
-      setState(() {
-        _uploadedImageUrl = url;
-        _isUploadingPhoto = false;
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('📸 फोटो सफलतापूर्वक अपलोड की गई!'),
-            backgroundColor: Color(0xFF10B981),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
     } catch (e) {
-      setState(() {
-        _isUploadingPhoto = false;
-      });
       if (mounted) {
-        String errorMsg = e.toString();
-        if (errorMsg.contains('Cloudinary setup is incomplete')) {
-          errorMsg = 'क्लाउडिनरी सेटअप अधूरा है। कृपया Config फाइल सेट करें।';
-        } else if (errorMsg.startsWith('Exception: ')) {
-          errorMsg = errorMsg.replaceFirst('Exception: ', '');
-        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('फ़ोटो अपलोड करने में त्रुटि: $errorMsg'),
+            content: Text('फ़ोटो चुनने में त्रुटि: ${e.toString()}'),
             backgroundColor: Colors.red,
             behavior: SnackBarBehavior.floating,
           ),
@@ -270,6 +243,11 @@ class _SOSScreenState extends State<SOSScreen> {
     });
 
     try {
+      String? imageUrl;
+      if (_localImageFile != null) {
+        imageUrl = await CloudinaryService.uploadImage(_localImageFile!);
+      }
+
       final user = FirebaseAuth.instance.currentUser;
       final reportsRef = FirebaseFirestore.instance.collection('sos_reports');
       final newReportDoc = reportsRef.doc();
@@ -280,7 +258,7 @@ class _SOSScreenState extends State<SOSScreen> {
         'description': _descriptionController.text.trim(),
         'latitude': _latitude ?? 26.9124,
         'longitude': _longitude ?? 75.7873,
-        'imageUrl': _uploadedImageUrl,
+        'imageUrl': imageUrl,
         'status': 'In Progress (सक्रिय)',
         'createdAt': FieldValue.serverTimestamp(),
         'reporterId': user?.uid ?? 'anonymous',
@@ -289,7 +267,7 @@ class _SOSScreenState extends State<SOSScreen> {
 
       _descriptionController.clear();
       setState(() {
-        _uploadedImageUrl = null;
+        _localImageFile = null;
       });
 
       if (mounted) {
@@ -301,11 +279,16 @@ class _SOSScreenState extends State<SOSScreen> {
               children: [
                 Icon(Icons.emergency, color: Color(0xFFEF4444)),
                 SizedBox(width: 8),
-                Text('SOS Alert Sent!'),
+                Expanded(
+                  child: Text(
+                    'रिपोर्ट दर्ज की गई! (Report Submitted!)',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ),
               ],
             ),
             content: const Text(
-              'आपका इमरजेंसी SOS अलर्ट सफलतापूर्वक भेज दिया गया है। नजदीकी गौ सेवकों और संबंधित एनजीओ को सूचित किया जा रहा है। कृपया स्थान पर बने रहें।',
+              'जानवर की मदद के लिए आपकी आपातकालीन रिपोर्ट दर्ज कर ली गई है। गौ सेवक और एनजीओ जल्द ही आपसे संपर्क करेंगे।',
               style: TextStyle(fontSize: 14),
             ),
             actions: [
@@ -319,9 +302,15 @@ class _SOSScreenState extends State<SOSScreen> {
       }
     } catch (e) {
       if (mounted) {
+        String errorMsg = e.toString();
+        if (errorMsg.contains('Cloudinary setup is incomplete')) {
+          errorMsg = 'क्लाउडिनरी सेटअप अधूरा है। कृपया Config फाइल सेट करें।';
+        } else if (errorMsg.startsWith('Exception: ')) {
+          errorMsg = errorMsg.replaceFirst('Exception: ', '');
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('त्रुटि: ${e.toString()}'),
+            content: Text('त्रुटि: $errorMsg'),
             backgroundColor: Colors.red,
           ),
         );
@@ -357,9 +346,19 @@ class _SOSScreenState extends State<SOSScreen> {
         elevation: 0,
       ),
       body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFEF4444)),
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFEF4444)),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    _localImageFile != null ? 'Uploading photo & submitting...' : 'Submitting report...',
+                    style: const TextStyle(fontSize: 14, color: Color(0xFF475569), fontWeight: FontWeight.w500),
+                  ),
+                ],
               ),
             )
           : Column(
@@ -463,7 +462,7 @@ class _SOSScreenState extends State<SOSScreen> {
               children: [
                 Expanded(
                   child: InkWell(
-                    onTap: () => _pickAndUploadImage(ImageSource.camera),
+                    onTap: () => _pickLocalImage(ImageSource.camera),
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 20),
                       decoration: BoxDecoration(
@@ -484,7 +483,7 @@ class _SOSScreenState extends State<SOSScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: InkWell(
-                    onTap: () => _pickAndUploadImage(ImageSource.gallery),
+                    onTap: () => _pickLocalImage(ImageSource.gallery),
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 20),
                       decoration: BoxDecoration(
@@ -504,24 +503,7 @@ class _SOSScreenState extends State<SOSScreen> {
                 ),
               ],
             ),
-            if (_isUploadingPhoto)
-              const Padding(
-                padding: EdgeInsets.only(top: 12.0),
-                child: Column(
-                  children: [
-                    LinearProgressIndicator(
-                      color: Color(0xFFEF4444),
-                      backgroundColor: Color(0xFFFEE2E2),
-                    ),
-                    SizedBox(height: 8),
-                    Text(
-                      'फोटो अपलोड हो रही है, कृपया प्रतीक्षा करें...',
-                      style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-                    ),
-                  ],
-                ),
-              ),
-            if (_uploadedImageUrl != null) ...[
+            if (_localImageFile != null) ...[
               const SizedBox(height: 12),
               Stack(
                 children: [
@@ -532,7 +514,7 @@ class _SOSScreenState extends State<SOSScreen> {
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(color: const Color(0xFFE2E8F0)),
                       image: DecorationImage(
-                        image: NetworkImage(_uploadedImageUrl!),
+                        image: FileImage(_localImageFile!),
                         fit: BoxFit.cover,
                       ),
                     ),
@@ -543,7 +525,7 @@ class _SOSScreenState extends State<SOSScreen> {
                     child: GestureDetector(
                       onTap: () {
                         setState(() {
-                          _uploadedImageUrl = null;
+                          _localImageFile = null;
                         });
                       },
                       child: Container(
@@ -737,9 +719,12 @@ class _SOSScreenState extends State<SOSScreen> {
           itemCount: sortedDocs.length,
           itemBuilder: (context, index) {
             final doc = sortedDocs[index];
-            final data = doc.data() as Map<String, dynamic>;
-
+            final Map<String, dynamic> data = Map<String, dynamic>.from(doc.data() as Map<String, dynamic>);
+            data['docId'] = doc.id;
             final String idStr = data['id'] ?? doc.id.substring(0, 6).toUpperCase();
+            if (!data.containsKey('id')) {
+              data['id'] = idStr;
+            }
             final String animalStr = data['animal'] ?? 'Cow';
             final String descStr = data['description'] ?? '';
             final String statusStr = data['status'] ?? 'In Progress (सक्रिय)';
@@ -781,6 +766,7 @@ class _SOSScreenState extends State<SOSScreen> {
               statusColor: statusColor,
               time: timeStr,
               imageUrl: imageUrlStr,
+              rawData: data,
             );
           },
         );
@@ -797,6 +783,7 @@ class _SOSScreenState extends State<SOSScreen> {
     required Color statusColor,
     required String time,
     String? imageUrl,
+    required Map<String, dynamic> rawData,
   }) {
     String animalEmoji = '🐄';
     if (animal.toLowerCase().contains('dog')) animalEmoji = '🐕';
@@ -805,124 +792,189 @@ class _SOSScreenState extends State<SOSScreen> {
     if (animal.toLowerCase().contains('buffalo')) animalEmoji = '🐃';
     if (animal.toLowerCase().contains('other')) animalEmoji = '🐾';
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => SOSReportDetailScreen(data: rawData),
+          ),
+        );
+      },
+      child: Card(
+      margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      clipBehavior: Clip.antiAlias,
       elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      child: SizedBox(
+        height: 110,
+        child: Row(
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(id, style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: statusColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    status,
-                    style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 11),
-                  ),
-                ),
-              ],
-            ),
-            const Divider(height: 24),
-            Row(
-              children: [
-                Text(animalEmoji, style: const TextStyle(fontSize: 16)),
-                const SizedBox(width: 8),
-                Text('$animal ($animalEmoji)', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-              ],
-            ),
-            if (description.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.only(left: 24.0),
-                child: Text(
-                  description,
-                  style: const TextStyle(fontSize: 13, color: Color(0xFF475569), fontStyle: FontStyle.italic),
-                ),
-              ),
-            ],
-            if (imageUrl != null && imageUrl.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Image.network(
-                  imageUrl,
-                  height: 160,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      height: 160,
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey.shade300),
+            // Left Side: Image or Placeholder
+            SizedBox(
+              width: 110,
+              height: 110,
+              child: imageUrl != null && imageUrl.isNotEmpty
+                  ? GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => FullScreenImageViewer(imageUrl: imageUrl),
+                          ),
+                        );
+                      },
+                      child: Image.network(
+                        imageUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) => Container(
+                          color: Colors.grey.shade100,
+                          child: Center(child: Text(animalEmoji, style: const TextStyle(fontSize: 32))),
+                        ),
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return Container(
+                            color: Colors.grey.shade50,
+                            child: const Center(
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFEF4444)),
+                              ),
+                            ),
+                          );
+                        },
                       ),
-                      child: const Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
+                    )
+                  : Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [Colors.grey.shade200, Colors.grey.shade300],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                      ),
+                      child: Center(
+                        child: Text(animalEmoji, style: const TextStyle(fontSize: 36)),
+                      ),
+                    ),
+            ),
+            
+            // Right Side: Details
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // Row 1: ID and Status
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          id,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold, 
+                            color: Color(0xFF64748B),
+                            fontSize: 11,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: statusColor.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            status,
+                            style: TextStyle(
+                              color: statusColor, 
+                              fontWeight: FontWeight.bold, 
+                              fontSize: 9,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    
+                    // Row 2: Animal name
+                    Text(
+                      '$animal $animalEmoji',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold, 
+                        fontSize: 13, 
+                        color: Color(0xFF0F172A),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+
+                    // Row 3: Description (if empty, show location)
+                    if (description.trim().isNotEmpty)
+                      Text(
+                        description.trim(),
+                        style: const TextStyle(
+                          fontSize: 11, 
+                          color: Color(0xFF475569), 
+                          fontStyle: FontStyle.italic,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      )
+                    else
+                      Text(
+                        location,
+                        style: const TextStyle(
+                          fontSize: 10, 
+                          color: Color(0xFF64748B),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    
+                    // Row 4: Time and Location snippet
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
                           children: [
-                            Icon(Icons.broken_image, color: Colors.grey, size: 36),
-                            SizedBox(height: 8),
+                            const Icon(Icons.access_time, size: 10, color: Color(0xFF64748B)),
+                            const SizedBox(width: 4),
                             Text(
-                              'छवि लोड करने में विफल',
-                              style: TextStyle(color: Colors.grey, fontSize: 12),
+                              time,
+                              style: const TextStyle(fontSize: 10, color: Color(0xFF64748B)),
                             ),
                           ],
                         ),
-                      ),
-                    );
-                  },
-                  loadingBuilder: (context, child, loadingProgress) {
-                    if (loadingProgress == null) return child;
-                    return Container(
-                      height: 160,
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade50,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Center(
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFEF4444)),
-                        ),
-                      ),
-                    );
-                  },
+                        if (description.trim().isNotEmpty)
+                          Expanded(
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                const Icon(Icons.location_on, size: 10, color: Color(0xFFEF4444)),
+                                const SizedBox(width: 2),
+                                Flexible(
+                                  child: Text(
+                                    location,
+                                    style: const TextStyle(fontSize: 10, color: Color(0xFF64748B)),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    textAlign: TextAlign.end,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-            ],
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                const Icon(Icons.location_on, size: 16, color: Color(0xFFEF4444)),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(location, style: const TextStyle(fontSize: 12, color: Color(0xFF334155))),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                const Icon(Icons.access_time, size: 16, color: Color(0xFF64748B)),
-                const SizedBox(width: 8),
-                Text(time, style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
-              ],
             ),
           ],
         ),
       ),
+    ),
     );
   }
 
