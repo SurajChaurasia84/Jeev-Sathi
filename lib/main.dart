@@ -7,10 +7,12 @@ import 'screens/sos_screen.dart';
 import 'screens/profile_screen.dart';
 import 'dart:io' show Platform;
 import 'package:another_telephony/telephony.dart';
+import 'services/env_loader.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+  await EnvLoader.load();
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.dark,
