@@ -388,8 +388,7 @@ class SOSReportDetailScreen extends StatelessWidget {
         if (imageUrl != null && imageUrl.isNotEmpty) {
           try {
             await CloudinaryService.deleteImage(imageUrl);
-          } catch (cloudinaryError) {
-            debugPrint("Failed to delete Cloudinary image: $cloudinaryError");
+          } catch (_) {
           }
         }
 
