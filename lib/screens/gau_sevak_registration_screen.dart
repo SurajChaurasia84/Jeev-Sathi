@@ -66,8 +66,7 @@ class _GauSevakRegistrationScreenState extends State<GauSevakRegistrationScreen>
           _isAlreadyRegistered = true;
         }
       }
-    } catch (e) {
-      debugPrint("Error loading registration details: $e");
+    } catch (_) {
     } finally {
       if (mounted) {
         setState(() {
