@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:io';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'gau_sevak_registration_screen.dart';
 import 'doctor_registration_screen.dart';
 import 'doctor_dashboard_screen.dart';
@@ -13,6 +15,19 @@ import 'donation_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
+
+  Future<String?> _getLocalProfileImagePath(String uid) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final path = prefs.getString('profile_image_path_$uid');
+      if (path != null && path.isNotEmpty) {
+        if (await File(path).exists()) {
+          return path;
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -74,13 +89,25 @@ class ProfileScreen extends StatelessWidget {
                             Center(
                               child: Stack(
                                 children: [
-                                  CircleAvatar(
-                                    radius: 50,
-                                    backgroundColor: const Color(0xFF10B981).withValues(alpha: 0.1),
-                                    backgroundImage: user.photoURL != null ? NetworkImage(user.photoURL!) : null,
-                                    child: user.photoURL == null
-                                        ? const Text('🤠', style: TextStyle(fontSize: 48))
-                                        : null,
+                                  FutureBuilder<String?>(
+                                    future: _getLocalProfileImagePath(user.uid),
+                                    builder: (context, pathSnapshot) {
+                                      final localPath = pathSnapshot.data;
+                                      final ImageProvider? imageProvider = localPath != null
+                                          ? FileImage(File(localPath))
+                                          : (user.photoURL != null && !user.photoURL!.startsWith('/') && !user.photoURL!.startsWith('file')
+                                              ? NetworkImage(user.photoURL!)
+                                              : null);
+
+                                      return CircleAvatar(
+                                        radius: 50,
+                                        backgroundColor: const Color(0xFF10B981).withValues(alpha: 0.1),
+                                        backgroundImage: imageProvider,
+                                        child: imageProvider == null
+                                            ? const Text('🤠', style: TextStyle(fontSize: 48))
+                                            : null,
+                                      );
+                                    },
                                   ),
                                   Positioned(
                                     bottom: 0,
