@@ -160,7 +160,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '© 2026 Jeev Sathi. All rights reserved.',
+                      '© 2026 Sinux India Foundation. All rights reserved.',
                       style: TextStyle(
                         fontSize: 12,
                         color: const Color(0xFF64748B).withValues(alpha: 0.8),
