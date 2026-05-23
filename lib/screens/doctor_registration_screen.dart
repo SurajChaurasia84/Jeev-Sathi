@@ -62,8 +62,7 @@ class _DoctorRegistrationScreenState extends State<DoctorRegistrationScreen> {
           _isAlreadyRegistered = true;
         }
       }
-    } catch (e) {
-      debugPrint("Error loading doctor registration details: $e");
+    } catch (_) {
     } finally {
       if (mounted) {
         setState(() {
