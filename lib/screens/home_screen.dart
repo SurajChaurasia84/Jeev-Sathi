@@ -5,14 +5,76 @@ import 'gau_sevak_registration_screen.dart';
 import 'doctor_registration_screen.dart';
 import 'donation_screen.dart';
 import 'emergency_contacts_screen.dart';
+import 'all_sos_reports_screen.dart';
 import 'dart:async';
 import 'dart:io' show Platform;
 import 'package:another_telephony/telephony.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  List<QueryDocumentSnapshot> _reports = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadReportsWithCacheFirst();
+  }
+
+  Future<void> _loadReportsWithCacheFirst() async {
+    // 1. Try Cache First
+    try {
+      final cacheSnapshot = await FirebaseFirestore.instance
+          .collection('sos_reports')
+          .orderBy('createdAt', descending: true)
+          .limit(6)
+          .get(const GetOptions(source: Source.cache));
+      
+      if (cacheSnapshot.docs.isNotEmpty) {
+        setState(() {
+          _reports = cacheSnapshot.docs;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("Cache fetch error on HomeScreen: $e");
+    }
+
+    // 2. Try Server
+    try {
+      final serverSnapshot = await FirebaseFirestore.instance
+          .collection('sos_reports')
+          .orderBy('createdAt', descending: true)
+          .limit(6)
+          .get(const GetOptions(source: Source.server));
+
+      if (serverSnapshot.docs.isNotEmpty) {
+        setState(() {
+          _reports = serverSnapshot.docs;
+          _isLoading = false;
+        });
+      } else if (_reports.isEmpty) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("Server fetch error on HomeScreen: $e");
+      if (_isLoading) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -121,44 +183,83 @@ class HomeScreen extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text(
-                    'ट्रेंडिंग फीड्स (Trending Feeds)',
+                    'ट्रेंडिंग रिपोर्ट्स (Trending Reports)',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
                   ),
                   TextButton(
-                    onPressed: () {},
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const AllSOSReportsScreen()),
+                      );
+                    },
                     child: const Text('सभी देखें', style: TextStyle(color: Color(0xFF10B981))),
                   ),
                 ],
               ),
               const SizedBox(height: 8),
 
-              // Reels Preview Horizontal Scroll
+              // Reels Preview Horizontal Scroll (Firestore Cache First - Limit 6)
               SizedBox(
                 height: 220,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  physics: const BouncingScrollPhysics(),
-                  children: [
-                    _buildReelCard(
-                      imageUrl: 'https://images.unsplash.com/photo-1570042225831-d98fa7577f1e?w=500&auto=format&fit=crop',
-                      tag: 'Rescue',
-                      likes: '4,823',
-                      creator: 'राम सेवक जी',
-                    ),
-                    _buildReelCard(
-                      imageUrl: 'https://images.unsplash.com/photo-1596733430284-f7437764b1a9?w=500&auto=format&fit=crop',
-                      tag: 'Treatment',
-                      likes: '7,241',
-                      creator: 'प्रिया गौ माता',
-                    ),
-                    _buildReelCard(
-                      imageUrl: 'https://images.unsplash.com/photo-1546182990-dffeafbe841d?w=500&auto=format&fit=crop',
-                      tag: 'Feeding',
-                      likes: '3,156',
-                      creator: 'गौशाला पथमेड़ा',
-                    ),
-                  ],
-                ),
+                child: _isLoading
+                    ? const Center(
+                        child: CircularProgressIndicator(
+                          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF10B981)),
+                        ),
+                      )
+                    : _reports.isEmpty
+                        ? Center(
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(24),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: const Color(0xFFE2E8F0)),
+                              ),
+                              child: const Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text('🐾', style: TextStyle(fontSize: 32)),
+                                  SizedBox(height: 8),
+                                  Text(
+                                    'कोई सक्रिय रिपोर्ट नहीं है।',
+                                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                        : ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            physics: const BouncingScrollPhysics(),
+                            itemCount: _reports.length,
+                            itemBuilder: (context, index) {
+                              final doc = _reports[index];
+                              final Map<String, dynamic> data = Map<String, dynamic>.from(doc.data() as Map<String, dynamic>);
+                              data['docId'] = doc.id;
+                              
+                              final String animal = data['animal'] ?? 'Cow';
+                              final String creator = data['reporterName'] ?? 'Anonymous';
+                              final String? imageUrl = data['imageUrl'];
+                              final String status = data['status'] ?? 'Active';
+                              final String? description = data['description'];
+
+                              return Container(
+                                width: 140,
+                                margin: const EdgeInsets.only(right: 12),
+                                child: SOSReportCard(
+                                  imageUrl: imageUrl,
+                                  animal: animal,
+                                  description: description,
+                                  status: status,
+                                  creator: creator,
+                                  rawData: data,
+                                ),
+                              );
+                            },
+                          ),
               ),
               const SizedBox(height: 16),
             ],
@@ -295,88 +396,7 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildReelCard({
-    required String imageUrl,
-    required String tag,
-    required String likes,
-    required String creator,
-  }) {
-    return Container(
-      width: 140,
-      margin: const EdgeInsets.only(right: 12),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: Image.network(
-                imageUrl,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => Container(
-                  color: Colors.grey.shade300,
-                  child: const Center(
-                    child: Icon(Icons.broken_image, color: Colors.white, size: 28),
-                  ),
-                ),
-              ),
-            ),
-            Positioned.fill(
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Colors.transparent, Colors.black.withValues(alpha: 0.8)],
-                  ),
-                ),
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    // Play Button icon overlay
-                    const Center(
-                      child: Icon(Icons.play_circle_fill, color: Colors.white70, size: 36),
-                    ),
-                    const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF10B981),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        tag,
-                        style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        const Icon(Icons.favorite, color: Colors.red, size: 12),
-                        const SizedBox(width: 4),
-                        Text(
-                          likes,
-                          style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      creator,
-                      style: const TextStyle(color: Colors.white70, fontSize: 10),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  // Reusable SOSReportCard widget is imported from all_sos_reports_screen.dart
 
   Widget _buildWomenSafetyBanner(BuildContext context) {
     return Card(
