@@ -6,6 +6,7 @@ import 'doctor_registration_screen.dart';
 import 'donation_screen.dart';
 import 'emergency_contacts_screen.dart';
 import 'all_sos_reports_screen.dart';
+import 'sos_screen.dart';
 import 'dart:async';
 import 'dart:io' show Platform;
 import 'package:another_telephony/telephony.dart';
@@ -22,11 +23,20 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   List<QueryDocumentSnapshot> _reports = [];
   bool _isLoading = true;
+  late final PageController _pageController;
+  int _currentPage = 0;
 
   @override
   void initState() {
     super.initState();
+    _pageController = PageController();
     _loadReportsWithCacheFirst();
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadReportsWithCacheFirst() async {
@@ -115,8 +125,8 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 1. Donation Campaign Card
-              _buildDonationCard(context),
+              // 1. Donation & Safety Carousel
+              _buildCarouselSection(context),
               const SizedBox(height: 24),
 
               // 2. Registration Actions
@@ -162,8 +172,8 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 24),
 
-              // Women Safety Banner (Optional highlight / CTA)
-              _buildWomenSafetyBanner(context),
+              // 2.5 Gau Mata Seva Fund Card
+              _buildDonationCard(context),
               const SizedBox(height: 24),
 
               // 3. Reels Section Header
@@ -259,7 +269,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildDonationCard(BuildContext context) {
     return Card(
+      elevation: 0,
       clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
       child: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -268,55 +282,81 @@ class _HomeScreenState extends State<HomeScreen> {
             colors: [Colors.orange.shade800, Colors.orange.shade600],
           ),
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Text('🐄', style: TextStyle(fontSize: 24)),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Gau Mata Seva Fund',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.9),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
+        child: InkWell(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const DonationScreen()),
+            );
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 14.0),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.2),
+                    shape: BoxShape.circle,
                   ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'घायल गायों के इलाज के लिए सहयोग करें',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
+                  child: const Text('🐄', style: TextStyle(fontSize: 20)),
                 ),
-              ),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const DonationScreen()),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: Colors.orange.shade800,
-                  elevation: 0,
-                  minimumSize: const Size(double.infinity, 48),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Gau Mata Seva Fund',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        'घायल गायों के इलाज के लिए सहयोग करें',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                child: const Text(
-                  'अभी दान करें 🙏',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                const SizedBox(width: 12),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const DonationScreen()),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: Colors.orange.shade800,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'दान करें',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                      SizedBox(width: 4),
+                      Text('🙏', style: TextStyle(fontSize: 12)),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -386,47 +426,166 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // Reusable SOSReportCard widget is imported from all_sos_reports_screen.dart
 
-  Widget _buildWomenSafetyBanner(BuildContext context) {
-    return Card(
-      elevation: 0,
-      color: const Color(0xFFFEF2F2),
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: const BorderSide(color: Color(0xFFFEE2E2)),
-      ),
-      child: InkWell(
-        onTap: () => _triggerWomenSafetySOS(context),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Row(
+  Widget _buildCarouselSection(BuildContext context) {
+    return Column(
+      children: [
+        SizedBox(
+          height: 200,
+          child: PageView(
+            controller: _pageController,
+            onPageChanged: (int index) {
+              setState(() {
+                _currentPage = index;
+              });
+            },
             children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: const BoxDecoration(
-                  color: Color(0xFFEF4444),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.security, color: Colors.white, size: 20),
+              _buildAnimalRescueCard(context),
+              _buildWomenSafetyCard(context),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(2, (index) {
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              height: 8,
+              width: _currentPage == index ? 24 : 8,
+              decoration: BoxDecoration(
+                color: _currentPage == index ? const Color(0xFF10B981) : const Color(0xFFCBD5E1),
+                borderRadius: BorderRadius.circular(4),
               ),
-              const SizedBox(width: 16),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'महिला सुरक्षा (Women Safety SOS)',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF991B1B)),
+            );
+          }),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAnimalRescueCard(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      clipBehavior: Clip.antiAlias,
+      child: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFFE11D48), Color(0xFF9F1239)],
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(
+                children: [
+                  Text('🚨', style: TextStyle(fontSize: 24)),
+                  SizedBox(width: 8),
+                  Text(
+                    'Animal Rescue SOS',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
                     ),
-                    SizedBox(height: 2),
-                    Text(
-                      'एक टैप में आपातकालीन संपर्कों को अलर्ट करें',
-                      style: TextStyle(fontSize: 11, color: Color(0xFF7F1D1D)),
-                    ),
-                  ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'जानवर की मदद के लिए SOS भेजें',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
-              const Icon(Icons.arrow_forward_ios, size: 14, color: Color(0xFFEF4444)),
+              const Spacer(),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const SOSScreen()),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: const Color(0xFFE11D48),
+                  elevation: 0,
+                  minimumSize: const Size(double.infinity, 48),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: const Text(
+                  'Report भेजें 🐾',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWomenSafetyCard(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      clipBehavior: Clip.antiAlias,
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [const Color(0xFFEF4444), const Color(0xFFB91C1C)],
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Text('🚨', style: TextStyle(fontSize: 24)),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Women Safety SOS',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.9),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'महिला सुरक्षा: एक टैप में आपातकालीन संपर्कों को अलर्ट करें',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const Spacer(),
+              ElevatedButton(
+                onPressed: () => _triggerWomenSafetySOS(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: const Color(0xFFEF4444),
+                  elevation: 0,
+                  minimumSize: const Size(double.infinity, 48),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: const Text(
+                  'तुरंत अलर्ट भेजें 🚨',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                ),
+              ),
             ],
           ),
         ),
