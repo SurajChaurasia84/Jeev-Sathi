@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
-import 'package:flutter/foundation.dart';
+
 import '../config/cloudinary_config.dart';
 import 'package:crypto/crypto.dart';
 
@@ -42,7 +42,6 @@ class CloudinaryService {
         throw Exception('Cloudinary Upload Failed (${response.statusCode}): $errorMessage');
       }
     } catch (e) {
-      debugPrint('Cloudinary Upload Error: $e');
       rethrow;
     }
   }
@@ -59,13 +58,11 @@ class CloudinaryService {
     }
 
     if (apiKey.isEmpty || apiKey == 'YOUR_API_KEY' || apiSecret.isEmpty || apiSecret == 'YOUR_API_SECRET') {
-      debugPrint('Cloudinary credentials (apiKey or apiSecret) are not set. Skipping Cloudinary image deletion.');
       return; // Skip if credentials are not configured
     }
 
     final String? publicId = _extractPublicId(imageUrl);
     if (publicId == null || publicId.isEmpty) {
-      debugPrint('Could not extract public ID from Cloudinary URL: $imageUrl');
       return;
     }
 
@@ -89,17 +86,9 @@ class CloudinaryService {
       );
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> responseData = jsonDecode(response.body);
-        if (responseData['result'] == 'ok') {
-          debugPrint('Successfully deleted image from Cloudinary: $publicId');
-        } else {
-          debugPrint('Cloudinary returned unexpected destroy result: ${responseData['result']}');
-        }
-      } else {
-        debugPrint('Cloudinary Destroy Request Failed with status: ${response.statusCode}');
+        // Deletion processed
       }
-    } catch (e) {
-      debugPrint('Cloudinary Destroy Request Error: $e');
+    } catch (_) {
     }
   }
 
@@ -130,8 +119,7 @@ class CloudinaryService {
       }
 
       return idSegments.join('/');
-    } catch (e) {
-      debugPrint('Failed to extract public ID: $e');
+    } catch (_) {
       return null;
     }
   }
