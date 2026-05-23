@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'gau_sevak_registration_screen.dart';
 import 'doctor_registration_screen.dart';
 import 'donation_screen.dart';
 import 'emergency_contacts_screen.dart';
 import 'all_sos_reports_screen.dart';
 import 'sos_screen.dart';
+import 'notifications_screen.dart';
 import 'dart:async';
 import 'dart:io' show Platform;
 import 'package:another_telephony/telephony.dart';
@@ -31,6 +33,36 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _pageController = PageController();
     _loadReportsWithCacheFirst();
+    _setupFCM();
+  }
+
+  Future<void> _setupFCM() async {
+    try {
+      final FirebaseMessaging messaging = FirebaseMessaging.instance;
+      
+      // Request notifications permission (specifically needed for iOS and Android 13+)
+      await messaging.requestPermission(
+        alert: true,
+        announcement: false,
+        badge: true,
+        carPlay: false,
+        criticalAlert: false,
+        provisional: false,
+        sound: true,
+      );
+
+      // Enable foreground notifications (shows banners even when app is open)
+      await messaging.setForegroundNotificationPresentationOptions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+      
+      // Subscribe to public rescue alerts topic
+      await messaging.subscribeToTopic('sos_alerts');
+    } catch (e) {
+      debugPrint('FCM setup error: $e');
+    }
   }
 
   @override
@@ -117,6 +149,18 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         backgroundColor: Colors.white,
         elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.notifications_none_rounded, color: Color(0xFF0F172A), size: 24),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const NotificationsScreen()),
+              );
+            },
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: SingleChildScrollView(
         physics: const BouncingScrollPhysics(),
