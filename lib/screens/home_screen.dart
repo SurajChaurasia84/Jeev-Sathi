@@ -44,8 +44,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _isLoading = false;
         });
       }
-    } catch (e) {
-      debugPrint("Cache fetch error on HomeScreen: $e");
+    } catch (_) {
     }
 
     // 2. Try Server
@@ -67,7 +66,6 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
     } catch (e) {
-      debugPrint("Server fetch error on HomeScreen: $e");
       if (_isLoading) {
         setState(() {
           _isLoading = false;
@@ -638,7 +636,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               );
             } catch (e) {
-              debugPrint("Error fetching location: $e");
               try {
                 currentPosition = await Geolocator.getLastKnownPosition();
               } catch (_) {}
@@ -702,8 +699,7 @@ class _HomeScreenState extends State<HomeScreen> {
               );
             }
             smsSentSuccess = true;
-          } catch (e) {
-            debugPrint("Telephony error: $e");
+          } catch (_) {
           }
         }
       }
