@@ -148,7 +148,6 @@ class _SOSScreenState extends State<SOSScreen> {
         );
       }
     } catch (e) {
-      debugPrint("Error fetching location: $e");
       try {
         Position? lastPosition = await Geolocator.getLastKnownPosition();
         if (lastPosition != null) {
@@ -212,8 +211,7 @@ class _SOSScreenState extends State<SOSScreen> {
           _gauSevaks.addAll(querySnapshot.docs);
         });
       }
-    } catch (e) {
-      debugPrint("Error loading gau sevaks: $e");
+    } catch (_) {
     } finally {
       setState(() {
         _isLoadingSevaks = false;
