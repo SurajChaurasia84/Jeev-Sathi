@@ -4,6 +4,8 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'gau_sevak_registration_screen.dart';
 import 'doctor_registration_screen.dart';
+import 'doctor_dashboard_screen.dart';
+import 'gau_sevak_dashboard_screen.dart';
 import 'settings_screen.dart';
 import 'edit_profile_screen.dart';
 import 'emergency_contacts_screen.dart';
@@ -643,46 +645,8 @@ class ProfileScreen extends StatelessWidget {
   }
 }
 
-class DoctorDashboardScreen extends StatelessWidget {
-  const DoctorDashboardScreen({super.key});
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        title: const Text('🩺 Doctor Dashboard', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white)),
-        backgroundColor: const Color(0xFFEC4899),
-        foregroundColor: Colors.white,
-      ),
-      body: const Center(
-        child: Text(
-          'Doctor Dashboard (No data available)',
-          style: TextStyle(color: Color(0xFF64748B), fontSize: 14),
-        ),
-      ),
-    );
-  }
-}
 
-class GauSevakDashboardScreen extends StatelessWidget {
-  const GauSevakDashboardScreen({super.key});
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        title: const Text('🤝 Gau Sevak Dashboard', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white)),
-        backgroundColor: const Color(0xFF10B981),
-        foregroundColor: Colors.white,
-      ),
-      body: const Center(
-        child: Text(
-          'Gau Sevak Dashboard (No data available)',
-          style: TextStyle(color: Color(0xFF64748B), fontSize: 14),
-        ),
-      ),
-    );
-  }
-}
+
+
