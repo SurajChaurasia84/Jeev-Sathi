@@ -59,8 +59,7 @@ class _AllSOSReportsScreenState extends State<AllSOSReportsScreen> {
           _isLoading = false;
         });
       }
-    } catch (e) {
-      debugPrint("Cache fetch error in all_sos_reports: $e");
+    } catch (_) {
     }
 
     // 2. Try Server
@@ -92,7 +91,6 @@ class _AllSOSReportsScreenState extends State<AllSOSReportsScreen> {
         });
       }
     } catch (e) {
-      debugPrint("Server fetch error in all_sos_reports: $e");
       if (_isLoading) {
         setState(() {
           _isLoading = false;
@@ -133,8 +131,7 @@ class _AllSOSReportsScreenState extends State<AllSOSReportsScreen> {
           _hasMore = false;
         });
       }
-    } catch (e) {
-      debugPrint("Error fetching more reports: $e");
+    } catch (_) {
     } finally {
       setState(() {
         _isLoadingMore = false;
