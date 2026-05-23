@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../services/fcm_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
@@ -263,6 +264,13 @@ class _SOSScreenState extends State<SOSScreen> {
         'reporterName': user?.displayName ?? 'Anonymous User',
       });
 
+      // Send push notification to all users subscribed to 'sos_alerts'
+      FCMService.sendSOSNotification(
+        animal: _selectedAnimal,
+        description: _descriptionController.text.trim(),
+        reportId: newReportDoc.id.substring(0, 6).toUpperCase(),
+      );
+
       _descriptionController.clear();
       setState(() {
         _localImageFile = null;
@@ -321,6 +329,8 @@ class _SOSScreenState extends State<SOSScreen> {
       }
     }
   }
+
+
 
   @override
   Widget build(BuildContext context) {
