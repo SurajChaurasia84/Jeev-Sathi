@@ -110,7 +110,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         }
       }
     } catch (e) {
-      debugPrint('Google Sign-In Error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
