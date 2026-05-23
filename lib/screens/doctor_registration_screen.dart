@@ -433,35 +433,6 @@ class _DoctorRegistrationScreenState extends State<DoctorRegistrationScreen> {
                       ),
                     const SizedBox(height: 24),
 
-                    // Location Selector Mock
-                    const Text(
-                      'लोकेशन चुनें',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF475569)),
-                    ),
-                    const SizedBox(height: 10),
-                    Card(
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        side: const BorderSide(color: Color(0xFFE2E8F0)),
-                      ),
-                      child: ListTile(
-                        leading: const Icon(Icons.map_rounded, color: Color(0xFFEC4899)),
-                        title: const Text('Map पर Location Pin करें', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                        subtitle: const Text('अपने क्लिनिक / सेवा क्षेत्र की सही स्थिति चुनें', style: TextStyle(fontSize: 10)),
-                        trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 12),
-                        onTap: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('📍 मैप लोकेशन सफलतापूर्वक सेट की गई (Mock)'),
-                              behavior: SnackBarBehavior.floating,
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-
                     // Emergency Switch Card
                     Card(
                       elevation: 0,
