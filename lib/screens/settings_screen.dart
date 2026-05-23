@@ -15,7 +15,6 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  bool _notificationsEnabled = true;
   String _appVersion = 'Version 1.0.0 (Build 1)';
 
   @override
@@ -63,7 +62,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Section 1: Account & Notifications
+                    // Section 1: Account preferences
                     _buildSectionTitle('Preferences'),
                     _buildSettingsCard([
                       _buildSettingsTile(
@@ -76,25 +75,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           Navigator.push(
                             context,
                             MaterialPageRoute(builder: (context) => const EditProfileScreen()),
-                          );
-                        },
-                      ),
-                      _buildDivider(),
-                      _buildSwitchTile(
-                        icon: Icons.notifications_none_outlined,
-                        iconBgColor: const Color(0xFF10B981).withValues(alpha: 0.1),
-                        iconColor: const Color(0xFF10B981),
-                        title: 'Push Notifications',
-                        subtitle: 'Get alerts for rescues & activities',
-                        value: _notificationsEnabled,
-                        onChanged: (val) {
-                          setState(() {
-                            _notificationsEnabled = val;
-                          });
-                          _showSnackBar(
-                            _notificationsEnabled
-                                ? 'Notifications enabled successfully'
-                                : 'Notifications muted',
                           );
                         },
                       ),
@@ -297,64 +277,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _buildSwitchTile({
-    required IconData icon,
-    required Color iconBgColor,
-    required Color iconColor,
-    required String title,
-    required String subtitle,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: iconBgColor,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, color: iconColor, size: 20),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                    color: Color(0xFF1E293B),
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF64748B),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Switch(
-            value: value,
-            onChanged: onChanged,
-            activeThumbColor: const Color(0xFF10B981),
-            activeTrackColor: const Color(0xFF10B981).withValues(alpha: 0.2),
-            inactiveThumbColor: const Color(0xFF94A3B8),
-            inactiveTrackColor: const Color(0xFFE2E8F0),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _showSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -376,7 +298,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _launchPrivacyPolicy() async {
-    final Uri url = Uri.parse('https://jeevsathi.org/privacy-policy');
+    final Uri url = Uri.parse('https://surajchaurasia84.github.io/Jeev-Sathi/');
     try {
       if (await canLaunchUrl(url)) {
         await launchUrl(url, mode: LaunchMode.externalApplication);
