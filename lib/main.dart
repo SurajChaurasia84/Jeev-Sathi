@@ -83,8 +83,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       try {
         final Telephony telephony = Telephony.instance;
         await telephony.requestPhoneAndSmsPermissions;
-      } catch (e) {
-        debugPrint("Error requesting permissions on startup: $e");
+      } catch (_) {
       }
     }
   }
