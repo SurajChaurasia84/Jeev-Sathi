@@ -109,16 +109,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         backgroundColor: Colors.white,
         elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Badge(
-              label: Text('2'),
-              child: Icon(Icons.notifications_outlined, color: Color(0xFF334155)),
-            ),
-            onPressed: () {},
-          ),
-          const SizedBox(width: 8),
-        ],
       ),
       body: SingleChildScrollView(
         physics: const BouncingScrollPhysics(),
