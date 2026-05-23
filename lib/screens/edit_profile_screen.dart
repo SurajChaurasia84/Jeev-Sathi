@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path_provider/path_provider.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -20,6 +24,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   bool _isLoading = true;
   bool _isSaving = false;
   User? _currentUser;
+
+  File? _localProfileImage;
+  bool _isLocalImageUpdated = false;
+  final ImagePicker _picker = ImagePicker();
 
   @override
   void initState() {
@@ -47,6 +55,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
 
     try {
+      // Load local profile image path from SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      final localPath = prefs.getString('profile_image_path_${_currentUser!.uid}');
+      if (localPath != null && localPath.isNotEmpty) {
+        final file = File(localPath);
+        if (await file.exists()) {
+          setState(() {
+            _localProfileImage = file;
+          });
+        }
+      }
+
       final doc = await FirebaseFirestore.instance
           .collection('users')
           .doc(_currentUser!.uid)
@@ -94,6 +114,29 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       if (_currentUser != null) {
         // 1. Update Firebase Auth display name
         await _currentUser!.updateDisplayName(name);
+
+        // 1.5 Handle local profile image saving/removal
+        if (_isLocalImageUpdated) {
+          final prefs = await SharedPreferences.getInstance();
+          final appDocDir = await getApplicationDocumentsDirectory();
+          final destinationFile = File('${appDocDir.path}/profile_${_currentUser!.uid}.png');
+
+          if (_localProfileImage == null) {
+            // Remove
+            if (await destinationFile.exists()) {
+              await destinationFile.delete();
+            }
+            await prefs.remove('profile_image_path_${_currentUser!.uid}');
+            await _currentUser!.updatePhotoURL(null);
+          } else {
+            // Save/Overwrite
+            if (_localProfileImage!.path != destinationFile.path) {
+              await _localProfileImage!.copy(destinationFile.path);
+            }
+            await prefs.setString('profile_image_path_${_currentUser!.uid}', destinationFile.path);
+            await _currentUser!.updatePhotoURL(destinationFile.path);
+          }
+        }
 
         // 2. Update details in Firestore users collection
         await FirebaseFirestore.instance
@@ -195,15 +238,37 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           child: Center(
                             child: Column(
                               children: [
-                                CircleAvatar(
-                                  radius: 46,
-                                  backgroundColor: const Color(0xFF10B981).withValues(alpha: 0.1),
-                                  backgroundImage: _currentUser?.photoURL != null
-                                      ? NetworkImage(_currentUser!.photoURL!)
-                                      : null,
-                                  child: _currentUser?.photoURL == null
-                                      ? const Text('🤠', style: TextStyle(fontSize: 40))
-                                      : null,
+                                GestureDetector(
+                                  onTap: _showImagePickerOptions,
+                                  child: Stack(
+                                    children: [
+                                      CircleAvatar(
+                                        radius: 46,
+                                        backgroundColor: const Color(0xFF10B981).withValues(alpha: 0.1),
+                                        backgroundImage: _localProfileImage != null
+                                            ? FileImage(_localProfileImage!)
+                                            : (_currentUser?.photoURL != null && !_currentUser!.photoURL!.startsWith('/') && !_currentUser!.photoURL!.startsWith('file')
+                                                ? NetworkImage(_currentUser!.photoURL!)
+                                                : null),
+                                        child: (_localProfileImage == null && 
+                                                (_currentUser?.photoURL == null || _currentUser!.photoURL!.startsWith('/') || _currentUser!.photoURL!.startsWith('file')))
+                                            ? const Text('🤠', style: TextStyle(fontSize: 40))
+                                            : null,
+                                      ),
+                                      Positioned(
+                                        bottom: 0,
+                                        right: 0,
+                                        child: Container(
+                                          padding: const EdgeInsets.all(4),
+                                          decoration: const BoxDecoration(
+                                            color: Color(0xFF10B981),
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: const Icon(Icons.camera_alt, color: Colors.white, size: 14),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                                 const SizedBox(height: 12),
                                 Text(
@@ -370,6 +435,80 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Future<void> _pickProfileImage(ImageSource source) async {
+    try {
+      final XFile? pickedFile = await _picker.pickImage(
+        source: source,
+        imageQuality: 70,
+      );
+
+      if (pickedFile == null) return;
+
+      setState(() {
+        _localProfileImage = File(pickedFile.path);
+        _isLocalImageUpdated = true;
+      });
+    } catch (e) {
+      _showSnackBar('फ़ोटो चुनने में त्रुटि: ${e.toString()}', isError: true);
+    }
+  }
+
+  Future<void> _removeProfileImage() async {
+    setState(() {
+      _localProfileImage = null;
+      _isLocalImageUpdated = true;
+    });
+  }
+
+  void _showImagePickerOptions() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Text(
+                'प्रोफ़ाइल फ़ोटो बदलें (Change Profile Photo)',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt, color: Color(0xFF10B981)),
+              title: const Text('कैमरा (Camera)'),
+              onTap: () {
+                Navigator.pop(context);
+                _pickProfileImage(ImageSource.camera);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library, color: Colors.orange),
+              title: const Text('गैलरी (Gallery)'),
+              onTap: () {
+                Navigator.pop(context);
+                _pickProfileImage(ImageSource.gallery);
+              },
+            ),
+            if (_localProfileImage != null)
+              ListTile(
+                leading: const Icon(Icons.delete, color: Colors.red),
+                title: const Text('फ़ोटो हटाएं (Remove Photo)'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _removeProfileImage();
+                },
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
     );
   }
 }
