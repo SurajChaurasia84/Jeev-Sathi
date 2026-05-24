@@ -29,6 +29,18 @@ class ProfileScreen extends StatelessWidget {
     return null;
   }
 
+  String? _getNetworkProfileUrl(User user) {
+    if (user.photoURL != null && user.photoURL!.startsWith('http')) {
+      return user.photoURL;
+    }
+    for (final profile in user.providerData) {
+      if (profile.photoURL != null && profile.photoURL!.startsWith('http')) {
+        return profile.photoURL;
+      }
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -93,10 +105,14 @@ class ProfileScreen extends StatelessWidget {
                                     future: _getLocalProfileImagePath(user.uid),
                                     builder: (context, pathSnapshot) {
                                       final localPath = pathSnapshot.data;
+                                      final String? googlePhotoUrl = userData['photoUrl'] as String?;
+                                      final String? networkUrl = (googlePhotoUrl != null && googlePhotoUrl.isNotEmpty)
+                                          ? googlePhotoUrl
+                                          : _getNetworkProfileUrl(user);
                                       final ImageProvider? imageProvider = localPath != null
                                           ? FileImage(File(localPath))
-                                          : (user.photoURL != null && !user.photoURL!.startsWith('/') && !user.photoURL!.startsWith('file')
-                                              ? NetworkImage(user.photoURL!)
+                                          : (networkUrl != null && networkUrl.isNotEmpty && networkUrl.startsWith('http')
+                                              ? NetworkImage(networkUrl)
                                               : null);
 
                                       return CircleAvatar(
@@ -104,7 +120,7 @@ class ProfileScreen extends StatelessWidget {
                                         backgroundColor: const Color(0xFF10B981).withValues(alpha: 0.1),
                                         backgroundImage: imageProvider,
                                         child: imageProvider == null
-                                            ? const Text('🤠', style: TextStyle(fontSize: 48))
+                                            ? const Icon(Icons.person, size: 50, color: Color(0xFF10B981))
                                             : null,
                                       );
                                     },
