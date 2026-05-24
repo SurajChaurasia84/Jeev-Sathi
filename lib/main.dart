@@ -5,8 +5,6 @@ import 'screens/auth_gate.dart';
 import 'screens/home_screen.dart';
 import 'screens/sos_screen.dart';
 import 'screens/profile_screen.dart';
-import 'dart:io' show Platform;
-import 'package:another_telephony/telephony.dart';
 import 'services/env_loader.dart';
 
 void main() async {
@@ -75,17 +73,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   @override
   void initState() {
     super.initState();
-    _requestSmsPermissionOnStartup();
-  }
-
-  Future<void> _requestSmsPermissionOnStartup() async {
-    if (Platform.isAndroid) {
-      try {
-        final Telephony telephony = Telephony.instance;
-        await telephony.requestPhoneAndSmsPermissions;
-      } catch (_) {
-      }
-    }
   }
 
   @override
