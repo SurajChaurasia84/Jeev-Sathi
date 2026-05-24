@@ -26,6 +26,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   User? _currentUser;
 
   File? _localProfileImage;
+  String? _firestorePhotoUrl;
   bool _isLocalImageUpdated = false;
   final ImagePicker _picker = ImagePicker();
 
@@ -75,6 +76,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       if (doc.exists) {
         final data = doc.data();
         if (data != null) {
+          setState(() {
+            _firestorePhotoUrl = data['photoUrl'] as String?;
+          });
           _nameController.text = data['displayName'] ?? data['name'] ?? _currentUser!.displayName ?? '';
           _phoneController.text = data['phoneNumber'] ?? data['phone'] ?? _currentUser!.phoneNumber ?? '';
           _districtController.text = data['district'] ?? '';
@@ -247,12 +251,19 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                         backgroundColor: const Color(0xFF10B981).withValues(alpha: 0.1),
                                         backgroundImage: _localProfileImage != null
                                             ? FileImage(_localProfileImage!)
-                                            : (_currentUser?.photoURL != null && !_currentUser!.photoURL!.startsWith('/') && !_currentUser!.photoURL!.startsWith('file')
-                                                ? NetworkImage(_currentUser!.photoURL!)
-                                                : null),
+                                            : ((_firestorePhotoUrl != null && 
+                                                _firestorePhotoUrl!.isNotEmpty && 
+                                                _firestorePhotoUrl!.startsWith('http'))
+                                                ? NetworkImage(_firestorePhotoUrl!)
+                                                : (_currentUser != null && _getNetworkProfileUrl(_currentUser!) != null
+                                                     ? NetworkImage(_getNetworkProfileUrl(_currentUser!)!)
+                                                     : null)),
                                         child: (_localProfileImage == null && 
-                                                (_currentUser?.photoURL == null || _currentUser!.photoURL!.startsWith('/') || _currentUser!.photoURL!.startsWith('file')))
-                                            ? const Text('🤠', style: TextStyle(fontSize: 40))
+                                                (_firestorePhotoUrl == null || 
+                                                 _firestorePhotoUrl!.isEmpty || 
+                                                 !_firestorePhotoUrl!.startsWith('http')) &&
+                                                (_currentUser == null || _getNetworkProfileUrl(_currentUser!) == null))
+                                            ? const Icon(Icons.person, size: 46, color: Color(0xFF10B981))
                                             : null,
                                       ),
                                       Positioned(
@@ -510,5 +521,17 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         ),
       ),
     );
+  }
+
+  String? _getNetworkProfileUrl(User user) {
+    if (user.photoURL != null && user.photoURL!.startsWith('http')) {
+      return user.photoURL;
+    }
+    for (final profile in user.providerData) {
+      if (profile.photoURL != null && profile.photoURL!.startsWith('http')) {
+        return profile.photoURL;
+      }
+    }
+    return null;
   }
 }
