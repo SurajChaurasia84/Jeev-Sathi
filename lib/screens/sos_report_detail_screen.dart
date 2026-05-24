@@ -22,6 +22,7 @@ class SOSReportDetailScreen extends StatelessWidget {
     final double? lng = data['longitude'] is num ? (data['longitude'] as num).toDouble() : null;
     final String reporterId = data['reporterId'] ?? '';
     final String? docId = data['docId'];
+    final String? reporterPhone = data['reporterPhone'];
     final currentUser = FirebaseAuth.instance.currentUser;
     final bool isMyReport = currentUser != null && currentUser.uid == reporterId;
     
@@ -227,6 +228,30 @@ class SOSReportDetailScreen extends StatelessWidget {
                       children: [
                         _buildInfoRow(Icons.person_outline, 'रिपोर्टर', creator),
                         const Divider(height: 24),
+                        if (reporterPhone != null && reporterPhone.trim().isNotEmpty) ...[
+                          _buildInfoRow(
+                            Icons.phone_outlined,
+                            'फ़ोन नंबर',
+                            reporterPhone,
+                            onTap: () async {
+                              final Uri launchUri = Uri(
+                                scheme: 'tel',
+                                path: reporterPhone.trim(),
+                              );
+                              try {
+                                if (await canLaunchUrl(launchUri)) {
+                                  await launchUrl(launchUri, mode: LaunchMode.externalApplication);
+                                } else {
+                                  // Direct attempt in case canLaunchUrl is blocked
+                                  await launchUrl(launchUri, mode: LaunchMode.externalApplication);
+                                }
+                              } catch (e) {
+                                debugPrint('Could not launch dialer: $e');
+                              }
+                            },
+                          ),
+                          const Divider(height: 24),
+                        ],
                         _buildInfoRow(Icons.calendar_today_outlined, 'रिपोर्ट की तारीख', dateStr),
                         const Divider(height: 24),
                         _buildInfoRow(Icons.emergency_outlined, 'रिपोर्ट आईडी', '#SOS-$id'),
@@ -317,7 +342,7 @@ class SOSReportDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildInfoRow(IconData icon, String label, String value) {
+  Widget _buildInfoRow(IconData icon, String label, String value, {VoidCallback? onTap}) {
     return Row(
       children: [
         Icon(icon, size: 20, color: const Color(0xFF64748B)),
@@ -327,10 +352,30 @@ class SOSReportDetailScreen extends StatelessWidget {
           style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
         ),
         const Spacer(),
-        Text(
-          value,
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-        ),
+        onTap != null
+            ? InkWell(
+                onTap: onTap,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      value,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF10B981),
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    const Icon(Icons.call, size: 14, color: Color(0xFF10B981)),
+                  ],
+                ),
+              )
+            : Text(
+                value,
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+              ),
       ],
     );
   }
