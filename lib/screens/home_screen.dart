@@ -33,11 +33,16 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _pageController = PageController();
     _loadReportsWithCacheFirst();
-    _setupFCM();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _setupFCM();
+    });
   }
 
   Future<void> _setupFCM() async {
     try {
+      // Add a small delay to let the UI render fully before prompting the user
+      await Future.delayed(const Duration(seconds: 1));
+      
       final FirebaseMessaging messaging = FirebaseMessaging.instance;
       
       // Request notifications permission (specifically needed for iOS and Android 13+)
@@ -890,10 +895,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
       bool smsSentSuccess = false;
       if (Platform.isAndroid && sanitizedPhones.isNotEmpty) {
-        final Telephony telephony = Telephony.instance;
-        final bool? permission = await telephony.requestSmsPermissions;
-        if (permission == true) {
-          try {
+        try {
+          final Telephony telephony = Telephony.instance;
+          final bool? permission = await telephony.requestSmsPermissions;
+          if (permission == true) {
             for (final phone in sanitizedPhones) {
               await telephony.sendSms(
                 to: phone,
@@ -902,8 +907,9 @@ class _HomeScreenState extends State<HomeScreen> {
               );
             }
             smsSentSuccess = true;
-          } catch (_) {
           }
+        } catch (e) {
+          debugPrint('Telephony SMS failed, falling back: $e');
         }
       }
 
