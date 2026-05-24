@@ -1,5 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/fcm_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -23,6 +25,7 @@ class _SOSScreenState extends State<SOSScreen> {
   double? _latitude;
   double? _longitude;
   final TextEditingController _descriptionController = TextEditingController();
+  final TextEditingController _reporterPhoneController = TextEditingController();
   
   File? _localImageFile;
   final ImagePicker _picker = ImagePicker();
@@ -233,6 +236,7 @@ class _SOSScreenState extends State<SOSScreen> {
   void dispose() {
     _sevakScrollController.dispose();
     _descriptionController.dispose();
+    _reporterPhoneController.dispose();
     super.dispose();
   }
 
@@ -262,6 +266,7 @@ class _SOSScreenState extends State<SOSScreen> {
         'createdAt': FieldValue.serverTimestamp(),
         'reporterId': user?.uid ?? 'anonymous',
         'reporterName': user?.displayName ?? 'Anonymous User',
+        'reporterPhone': _reporterPhoneController.text.trim(),
       });
 
       // Send push notification to all users subscribed to 'sos_alerts'
@@ -272,6 +277,7 @@ class _SOSScreenState extends State<SOSScreen> {
       );
 
       _descriptionController.clear();
+      _reporterPhoneController.clear();
       setState(() {
         _localImageFile = null;
       });
@@ -606,6 +612,33 @@ class _SOSScreenState extends State<SOSScreen> {
               maxLines: 4,
               decoration: InputDecoration(
                 hintText: 'जानवर की स्थिति का विवरण लिखें...',
+                hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                filled: true,
+                fillColor: Colors.white,
+                contentPadding: const EdgeInsets.all(16),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Phone Number Input (Optional)
+            const Text(
+              'फ़ोन नंबर (वैकल्पिक) (Phone Number - Optional)',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _reporterPhoneController,
+              keyboardType: TextInputType.phone,
+              decoration: InputDecoration(
+                hintText: 'अपना फ़ोन नंबर लिखें (ताकि गौ सेवक आपसे संपर्क कर सकें)...',
                 hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
                 filled: true,
                 fillColor: Colors.white,
@@ -1157,11 +1190,14 @@ class _SOSScreenState extends State<SOSScreen> {
                   ),
                   IconButton(
                     icon: const Icon(Icons.copy, size: 20),
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('📋 नंबर क्लिपबोर्ड पर कॉपी किया गया!')),
-                      );
-                      Navigator.pop(context);
+                    onPressed: () async {
+                      await Clipboard.setData(ClipboardData(text: phone));
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('📋 नंबर क्लिपबोर्ड पर कॉपी किया गया!')),
+                        );
+                        Navigator.pop(context);
+                      }
                     },
                   ),
                 ],
@@ -1175,11 +1211,21 @@ class _SOSScreenState extends State<SOSScreen> {
             child: const Text('रद्द करें', style: TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('📞 $phone पर कॉल लगाया जा रहा है...')),
-              );
+            onPressed: () async {
               Navigator.pop(context);
+              final Uri launchUri = Uri(
+                scheme: 'tel',
+                path: phone.trim(),
+              );
+              try {
+                if (await canLaunchUrl(launchUri)) {
+                  await launchUrl(launchUri, mode: LaunchMode.externalApplication);
+                } else {
+                  await launchUrl(launchUri, mode: LaunchMode.externalApplication);
+                }
+              } catch (e) {
+                debugPrint('Could not launch dialer: $e');
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF10B981),
