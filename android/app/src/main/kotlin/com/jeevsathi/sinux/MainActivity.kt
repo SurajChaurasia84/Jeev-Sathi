@@ -1,4 +1,4 @@
-package com.jeevsathi.sinux.app
+package com.jeevsathi.sinux
 
 import io.flutter.embedding.android.FlutterActivity
 
