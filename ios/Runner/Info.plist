@@ -48,10 +48,15 @@
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>upi</string>
+		<string>sms</string>
 	</array>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>This app requires access to your location to fetch coordinates for animal rescue reports.</string>
+	<string>This app requires access to your location to fetch coordinates for animal rescue reports and share live location during safety SOS alerts.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>This app requires access to your location to fetch coordinates for animal rescue reports.</string>
+	<string>This app requires access to your location to fetch coordinates for animal rescue reports and share live location during safety SOS alerts.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>This app requires access to your camera to capture photos for animal rescue reports and profile updates.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>This app requires access to your photo library to select photos for animal rescue reports and profile updates.</string>
 </dict>
 </plist>
