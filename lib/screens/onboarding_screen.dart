@@ -127,6 +127,76 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     }
   }
 
+  Future<void> _signInAnonymously() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final UserCredential userCredential =
+          await FirebaseAuth.instance.signInAnonymously();
+      final User? user = userCredential.user;
+
+      if (user != null) {
+        // Set a default display name for the anonymous user
+        await user.updateDisplayName('अतिथि (Guest)');
+        
+        // Save guest user to firestore
+        await _saveGuestUserToFirestore(user);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('अतिथि के रूप में सफलतापूर्वक लॉगिन किया गया।'),
+              duration: Duration(seconds: 1),
+              backgroundColor: Color(0xFF10B981),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('अतिथि लॉगिन असफल रहा: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _saveGuestUserToFirestore(User user) async {
+    final docRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+    final docSnapshot = await docRef.get();
+    
+    final userData = <String, dynamic>{
+      'uid': user.uid,
+      'name': 'अतिथि (Guest)',
+      'displayName': 'अतिथि (Guest)',
+      'email': '',
+      'phoneNumber': '',
+      'photoUrl': '',
+      'isGauSevak': false,
+      'isDoctor': false,
+      'updatedAt': FieldValue.serverTimestamp(),
+      'lastLoginAt': FieldValue.serverTimestamp(),
+    };
+
+    if (!docSnapshot.exists) {
+      userData['createdAt'] = FieldValue.serverTimestamp();
+      await docRef.set(userData);
+    } else {
+      await docRef.set(userData, SetOptions(merge: true));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -293,7 +363,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF10B981)),
                           ),
                         )
-                      else
+                      else ...[
                         ElevatedButton(
                           onPressed: _signInWithGoogle,
                           style: ElevatedButton.styleFrom(
@@ -338,6 +408,26 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             ],
                           ),
                         ),
+                        const SizedBox(height: 8),
+                        TextButton.icon(
+                          onPressed: _signInAnonymously,
+                          style: TextButton.styleFrom(
+                            foregroundColor: const Color(0xFF10B981), // Emerald theme color
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          icon: const Icon(Icons.person_outline, size: 18),
+                          label: const Text(
+                            'Continue as Guest',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 12),
                       const Text(
                         'आगे बढ़कर आप हमारे नियमों और शर्तों से सहमत होते हैं।',
