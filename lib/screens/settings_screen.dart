@@ -291,7 +291,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _shareApp() {
     SharePlus.instance.share(
       ShareParams(
-        text: 'Download Jeev Sathi App to support animal rescue & welfare: https://play.google.com/store/apps/details?id=com.jeevsathi.sinux.app',
+        text: 'Download Jeev Sathi App to support animal rescue & welfare: https://play.google.com/store/apps/details?id=com.jeevsathi.sinux',
         title: 'Jeev Sathi App',
       ),
     );
