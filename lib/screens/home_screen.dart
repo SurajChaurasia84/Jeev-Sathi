@@ -11,7 +11,6 @@ import 'sos_screen.dart';
 import 'notifications_screen.dart';
 import 'dart:async';
 import 'dart:io' show Platform;
-import 'package:another_telephony/telephony.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -894,26 +893,7 @@ class _HomeScreenState extends State<HomeScreen> {
           .toList();
 
       bool smsSentSuccess = false;
-      if (Platform.isAndroid && sanitizedPhones.isNotEmpty) {
-        try {
-          final Telephony telephony = Telephony.instance;
-          final bool? permission = await telephony.requestSmsPermissions;
-          if (permission == true) {
-            for (final phone in sanitizedPhones) {
-              await telephony.sendSms(
-                to: phone,
-                message: finalMsg,
-                isMultipart: true,
-              );
-            }
-            smsSentSuccess = true;
-          }
-        } catch (e) {
-          debugPrint('Telephony SMS failed, falling back: $e');
-        }
-      }
-
-      if (!smsSentSuccess && sanitizedPhones.isNotEmpty) {
+      if (sanitizedPhones.isNotEmpty) {
         final separator = Platform.isAndroid ? ',' : ';';
         final phonePath = sanitizedPhones.join(separator);
         final Uri smsUri = Uri(
@@ -923,9 +903,17 @@ class _HomeScreenState extends State<HomeScreen> {
             'body': finalMsg,
           },
         );
-        if (await canLaunchUrl(smsUri)) {
-          await launchUrl(smsUri);
-          smsSentSuccess = true;
+        try {
+          if (await canLaunchUrl(smsUri)) {
+            await launchUrl(smsUri, mode: LaunchMode.externalApplication);
+            smsSentSuccess = true;
+          } else {
+            // Fallback for some systems where canLaunchUrl might return false but launchUrl still works
+            await launchUrl(smsUri, mode: LaunchMode.externalApplication);
+            smsSentSuccess = true;
+          }
+        } catch (e) {
+          debugPrint('SMS launch failed: $e');
         }
       }
 
@@ -945,7 +933,7 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 Icon(Icons.check_circle_rounded, color: Colors.green, size: 28),
                 SizedBox(width: 8),
-                Text('SOS अलर्ट भेजा गया!', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                Text('SOS अलर्ट शुरू किया गया!', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               ],
             ),
             content: Column(
@@ -953,7 +941,7 @@ class _HomeScreenState extends State<HomeScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'आपका आपातकालीन संकट संदेश और वर्तमान स्थान निम्नलिखित संपर्कों को भेज दिया गया है:',
+                  'आपके आपातकालीन संपर्क और स्थान के साथ SMS ऐप खोल दिया गया है। कृपया अलर्ट भेजने के लिए SMS ऐप में "Send" (भेजें) बटन दबाएं।',
                   style: TextStyle(fontSize: 12, height: 1.4),
                 ),
                 const SizedBox(height: 12),
@@ -982,7 +970,7 @@ class _HomeScreenState extends State<HomeScreen> {
       } else if (context.mounted && !smsSentSuccess) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('अलर्ट भेजने में विफल: SMS भेजने के लिए आवश्यक अनुमतियां नहीं मिलीं।'),
+            content: Text('अलर्ट भेजने में विफल: SMS ऐप खोलने में असमर्थ।'),
             backgroundColor: Colors.red,
           ),
         );
