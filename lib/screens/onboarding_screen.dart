@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -42,6 +43,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     final existingData = docSnapshot.data();
     final shouldCreateDefaults = !docSnapshot.exists;
 
+    String? fcmToken;
+    try {
+      fcmToken = await FirebaseMessaging.instance.getToken();
+    } catch (_) {}
+
     final userData = <String, dynamic>{
       'uid': user.uid,
       'name': user.displayName ?? googleUser.displayName ?? '',
@@ -52,6 +58,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       'updatedAt': FieldValue.serverTimestamp(),
       'lastLoginAt': FieldValue.serverTimestamp(),
     };
+
+    if (fcmToken != null && fcmToken.isNotEmpty) {
+      userData['fcmToken'] = fcmToken;
+    }
 
     if (shouldCreateDefaults || existingData?['isGauSevak'] == null) {
       userData['isGauSevak'] = false;
