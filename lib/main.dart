@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'screens/auth_gate.dart';
 import 'screens/home_screen.dart';
 import 'screens/sos_screen.dart';
@@ -73,6 +76,52 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   @override
   void initState() {
     super.initState();
+    _initFCMToken();
+  }
+
+  /// Requests notification permission, gets the FCM token, and saves it
+  /// to Firestore so the Vercel backend can send targeted/broadcast pushes.
+  Future<void> _initFCMToken() async {
+    try {
+      final messaging = FirebaseMessaging.instance;
+
+      // Request permission (required on iOS; shows system dialog)
+      await messaging.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+
+      // Subscribe to sos_alerts topic (legacy fallback)
+      await messaging.subscribeToTopic('sos_alerts');
+
+      // Get the FCM registration token for this device
+      final token = await messaging.getToken();
+      if (token == null) return;
+
+      // Save token to Firestore against the logged-in user
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .set({'fcmToken': token}, SetOptions(merge: true));
+
+      debugPrint('FCM token saved for uid: ${user.uid}');
+
+      // Listen for token refresh and update Firestore
+      messaging.onTokenRefresh.listen((newToken) async {
+        final currentUser = FirebaseAuth.instance.currentUser;
+        if (currentUser == null) return;
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(currentUser.uid)
+            .set({'fcmToken': newToken}, SetOptions(merge: true));
+      });
+    } catch (e) {
+      debugPrint('FCM token init error: $e');
+    }
   }
 
   @override
