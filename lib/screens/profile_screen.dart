@@ -12,6 +12,7 @@ import 'settings_screen.dart';
 import 'edit_profile_screen.dart';
 import 'emergency_contacts_screen.dart';
 import 'donation_screen.dart';
+import '../widgets/safe_avatar.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -109,19 +110,18 @@ class ProfileScreen extends StatelessWidget {
                                       final String? networkUrl = (googlePhotoUrl != null && googlePhotoUrl.isNotEmpty)
                                           ? googlePhotoUrl
                                           : _getNetworkProfileUrl(user);
-                                      final ImageProvider? imageProvider = localPath != null
-                                          ? FileImage(File(localPath))
+                                      final String? resolvedUrl = localPath != null
+                                          ? null  // will use localFile param
                                           : (networkUrl != null && networkUrl.isNotEmpty && networkUrl.startsWith('http')
-                                              ? NetworkImage(networkUrl)
+                                              ? networkUrl
                                               : null);
 
-                                      return CircleAvatar(
+                                      return SafeNetworkAvatar(
                                         radius: 50,
                                         backgroundColor: const Color(0xFF10B981).withValues(alpha: 0.1),
-                                        backgroundImage: imageProvider,
-                                        child: imageProvider == null
-                                            ? const Icon(Icons.person, size: 50, color: Color(0xFF10B981))
-                                            : null,
+                                        localFile: localPath != null ? File(localPath) : null,
+                                        photoUrl: resolvedUrl,
+                                        fallbackChild: const Icon(Icons.person, size: 50, color: Color(0xFF10B981)),
                                       );
                                     },
                                   ),
