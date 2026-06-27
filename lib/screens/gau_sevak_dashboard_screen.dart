@@ -32,6 +32,7 @@ class _GauSevakDashboardScreenState extends State<GauSevakDashboardScreen> with 
     String docId,
     String animalName, {
     String reporterId = '',
+    String? reporterToken,
   }) async {
     final bool? confirm = await showDialog<bool>(
       context: context,
@@ -89,6 +90,7 @@ class _GauSevakDashboardScreenState extends State<GauSevakDashboardScreen> with 
             reporterUid: reporterId,
             animal: animalName,
             reportId: docId.substring(0, 6).toUpperCase(),
+            targetToken: reporterToken,
           );
         }
 
@@ -121,6 +123,7 @@ class _GauSevakDashboardScreenState extends State<GauSevakDashboardScreen> with 
     String docId,
     String animalName, {
     required String reporterId,
+    String? reporterToken,
   }) async {
     final user = FirebaseAuth.instance.currentUser;
     final sevakName = user?.displayName ?? 'गौ सेवक';
@@ -150,6 +153,7 @@ class _GauSevakDashboardScreenState extends State<GauSevakDashboardScreen> with 
           animal: animalName,
           reportId: docId.substring(0, 6).toUpperCase(),
           sevakName: sevakName,
+          targetToken: reporterToken,
         );
       }
 
@@ -383,6 +387,7 @@ class _GauSevakDashboardScreenState extends State<GauSevakDashboardScreen> with 
         final String animal = data['animal'] ?? 'Cow';
         final String creator = data['reporterName'] ?? 'Anonymous';
         final String reporterId = data['reporterId'] ?? '';
+        final String? reporterToken = data['reporterToken'];
         final String? imageUrl = data['imageUrl'];
         final String description = data['description'] ?? '';
         final String status = data['status'] ?? 'Active';
@@ -506,88 +511,94 @@ class _GauSevakDashboardScreenState extends State<GauSevakDashboardScreen> with 
               // Action Buttons Bottom
               Container(
                 color: const Color(0xFFF8FAFC),
+                width: double.infinity,
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    // Route/Navigate button
-                    if (lat != null && lng != null)
-                      TextButton.icon(
-                        style: TextButton.styleFrom(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      // Route/Navigate button
+                      if (lat != null && lng != null)
+                        TextButton.icon(
+                          style: TextButton.styleFrom(
+                            minimumSize: const Size(60, 32),
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            foregroundColor: const Color(0xFF10B981),
+                          ),
+                          onPressed: () async {
+                            final googleMapsUrl = Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lng');
+                            if (await canLaunchUrl(googleMapsUrl)) {
+                              await launchUrl(googleMapsUrl);
+                            }
+                          },
+                          icon: const Icon(Icons.navigation, size: 14),
+                          label: const Text('दिशा (Route)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                        ),
+                      const SizedBox(width: 8),
+                      // Details Screen navigation
+                      OutlinedButton(
+                        style: OutlinedButton.styleFrom(
                           minimumSize: const Size(60, 32),
                           padding: const EdgeInsets.symmetric(horizontal: 10),
-                          foregroundColor: const Color(0xFF10B981),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          side: const BorderSide(color: Color(0xFFE2E8F0)),
+                          foregroundColor: const Color(0xFF334155),
                         ),
-                        onPressed: () async {
-                          final googleMapsUrl = Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lng');
-                          if (await canLaunchUrl(googleMapsUrl)) {
-                            await launchUrl(googleMapsUrl);
-                          }
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => SOSReportDetailScreen(data: rawData),
+                            ),
+                          );
                         },
-                        icon: const Icon(Icons.navigation, size: 14),
-                        label: const Text('दिशा (Route)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                        child: const Text('विवरण (Details)', style: TextStyle(fontSize: 11)),
                       ),
-                    const SizedBox(width: 8),
-                    // Details Screen navigation
-                    OutlinedButton(
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size(60, 32),
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        side: const BorderSide(color: Color(0xFFE2E8F0)),
-                        foregroundColor: const Color(0xFF334155),
-                      ),
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => SOSReportDetailScreen(data: rawData),
+                      if (isActive) ...[
+                        const SizedBox(width: 8),
+                        // Accept button (only if not already accepted)
+                        if (!isAccepted)
+                          OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              minimumSize: const Size(60, 32),
+                              padding: const EdgeInsets.symmetric(horizontal: 10),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              side: const BorderSide(color: Color(0xFF10B981)),
+                              foregroundColor: const Color(0xFF10B981),
+                            ),
+                            onPressed: () => _acceptCase(
+                              context,
+                              doc.id,
+                              animal,
+                              reporterId: reporterId,
+                              reporterToken: reporterToken,
+                            ),
+                            child: const Text('स्वीकार करें', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                           ),
-                        );
-                      },
-                      child: const Text('विवरण (Details)', style: TextStyle(fontSize: 11)),
-                    ),
-                    if (isActive) ...[
-                      const SizedBox(width: 8),
-                      // Accept button (only if not already accepted)
-                      if (!isAccepted)
-                        OutlinedButton(
-                          style: OutlinedButton.styleFrom(
+                        const SizedBox(width: 8),
+                        // Mark resolved button
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
                             minimumSize: const Size(60, 32),
                             padding: const EdgeInsets.symmetric(horizontal: 10),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            side: const BorderSide(color: Color(0xFF10B981)),
-                            foregroundColor: const Color(0xFF10B981),
+                            backgroundColor: const Color(0xFF10B981),
+                            foregroundColor: Colors.white,
+                            elevation: 0,
                           ),
-                          onPressed: () => _acceptCase(
+                          onPressed: () => _markCaseAsResolved(
                             context,
                             doc.id,
                             animal,
                             reporterId: reporterId,
+                            reporterToken: reporterToken,
                           ),
-                          child: const Text('स्वीकार करें', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                          child: const Text('मार्क सुलझ गया', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                         ),
-                      const SizedBox(width: 8),
-                      // Mark resolved button
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          minimumSize: const Size(60, 32),
-                          padding: const EdgeInsets.symmetric(horizontal: 10),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          backgroundColor: const Color(0xFF10B981),
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                        ),
-                        onPressed: () => _markCaseAsResolved(
-                          context,
-                          doc.id,
-                          animal,
-                          reporterId: reporterId,
-                        ),
-                        child: const Text('मार्क सुलझ गया', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                      ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
             ],
