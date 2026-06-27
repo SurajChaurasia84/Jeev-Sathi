@@ -422,64 +422,68 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> with Sing
               // Action Buttons Bottom
               Container(
                 color: const Color(0xFFF8FAFC),
+                width: double.infinity,
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    // Route/Navigate button
-                    if (lat != null && lng != null)
-                      TextButton.icon(
-                        style: TextButton.styleFrom(
-                          minimumSize: const Size(60, 32),
-                          padding: const EdgeInsets.symmetric(horizontal: 10),
-                          foregroundColor: const Color(0xFFEC4899),
-                        ),
-                        onPressed: () async {
-                          final googleMapsUrl = Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lng');
-                          if (await canLaunchUrl(googleMapsUrl)) {
-                            await launchUrl(googleMapsUrl);
-                          }
-                        },
-                        icon: const Icon(Icons.navigation, size: 14),
-                        label: const Text('दिशा (Route)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                      ),
-                    const SizedBox(width: 8),
-                    // Details Screen navigation
-                    OutlinedButton(
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size(60, 32),
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        side: const BorderSide(color: Color(0xFFE2E8F0)),
-                        foregroundColor: const Color(0xFF334155),
-                      ),
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => SOSReportDetailScreen(data: rawData),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      // Route/Navigate button
+                      if (lat != null && lng != null)
+                        TextButton.icon(
+                          style: TextButton.styleFrom(
+                            minimumSize: const Size(60, 32),
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            foregroundColor: const Color(0xFFEC4899),
                           ),
-                        );
-                      },
-                      child: const Text('विवरण (Details)', style: TextStyle(fontSize: 11)),
-                    ),
-                    if (isActive) ...[
+                          onPressed: () async {
+                            final googleMapsUrl = Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lng');
+                            if (await canLaunchUrl(googleMapsUrl)) {
+                              await launchUrl(googleMapsUrl);
+                            }
+                          },
+                          icon: const Icon(Icons.navigation, size: 14),
+                          label: const Text('दिशा (Route)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                        ),
                       const SizedBox(width: 8),
-                      // Mark resolved/treated button
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
+                      // Details Screen navigation
+                      OutlinedButton(
+                        style: OutlinedButton.styleFrom(
                           minimumSize: const Size(60, 32),
                           padding: const EdgeInsets.symmetric(horizontal: 10),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          backgroundColor: const Color(0xFFEC4899),
-                          foregroundColor: Colors.white,
-                          elevation: 0,
+                          side: const BorderSide(color: Color(0xFFE2E8F0)),
+                          foregroundColor: const Color(0xFF334155),
                         ),
-                        onPressed: () => _markCaseAsTreated(context, doc.id, animal),
-                        child: const Text('उपचार पूर्ण मार्क करें', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => SOSReportDetailScreen(data: rawData),
+                            ),
+                          );
+                        },
+                        child: const Text('विवरण (Details)', style: TextStyle(fontSize: 11)),
                       ),
+                      if (isActive) ...[
+                        const SizedBox(width: 8),
+                        // Mark resolved/treated button
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            minimumSize: const Size(60, 32),
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            backgroundColor: const Color(0xFFEC4899),
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                          ),
+                          onPressed: () => _markCaseAsTreated(context, doc.id, animal),
+                          child: const Text('उपचार पूर्ण मार्क करें', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
             ],
