@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/cloudinary_service.dart';
@@ -307,32 +308,69 @@ class _SOSScreenState extends State<SOSScreen> {
   }
 
   Future<void> _submitSOSAlert() async {
+    // ── Validation Checks ──────────────────────────────────────────────────
+    if (_localImageFile == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('कृपया घायल जानवर की फोटो संलग्न करें। (Photo required)'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    if (_latitude == null || _longitude == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('कृपया अपनी लोकेशन (GPS) जोड़ें। (Location required)'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    if (_descriptionController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('कृपया समस्या/घटना का विवरण दर्ज करें। (Description required)'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
     setState(() {
       _isLoading = true;
     });
 
     try {
-      String? imageUrl;
-      if (_localImageFile != null) {
-        imageUrl = await CloudinaryService.uploadImage(_localImageFile!);
-      }
+      final String imageUrl = await CloudinaryService.uploadImage(_localImageFile!);
 
       final user = FirebaseAuth.instance.currentUser;
       final reportsRef = FirebaseFirestore.instance.collection('sos_reports');
       final newReportDoc = reportsRef.doc();
 
+      String? reporterToken;
+      try {
+        reporterToken = await FirebaseMessaging.instance.getToken();
+      } catch (_) {}
+
       await newReportDoc.set({
         'id': newReportDoc.id.substring(0, 6).toUpperCase(),
         'animal': _selectedAnimal,
         'description': _descriptionController.text.trim(),
-        'latitude': _latitude ?? 26.9124,
-        'longitude': _longitude ?? 75.7873,
+        'latitude': _latitude!,
+        'longitude': _longitude!,
         'imageUrl': imageUrl,
         'status': 'In Progress (सक्रिय)',
         'createdAt': FieldValue.serverTimestamp(),
         'reporterId': user?.uid ?? 'anonymous',
         'reporterName': user?.displayName ?? 'Anonymous User',
         'reporterPhone': _reporterPhoneController.text.trim(),
+        'reporterToken': reporterToken,
       });
 
       // Send push notification to all users (except the SOS poster)
@@ -436,7 +474,7 @@ class _SOSScreenState extends State<SOSScreen> {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    _localImageFile != null ? 'Uploading photo & submitting...' : 'Submitting report...',
+                    _localImageFile != null ? 'Submitting...' : 'Submitting report...',
                     style: const TextStyle(fontSize: 14, color: Color(0xFF475569), fontWeight: FontWeight.w500),
                   ),
                 ],
@@ -538,7 +576,7 @@ class _SOSScreenState extends State<SOSScreen> {
 
             // Upload Media Card
             const Text(
-              'फोटो जोड़ें (Add Photo)',
+              'फोटो जोड़ें * (Add Photo - Required)',
               style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
             ),
             const SizedBox(height: 10),
@@ -633,7 +671,7 @@ class _SOSScreenState extends State<SOSScreen> {
 
             // Live Location Card
             const Text(
-              'स्थान (Live Location)',
+              'स्थान * (Live Location - Required)',
               style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
             ),
             const SizedBox(height: 10),
@@ -673,7 +711,7 @@ class _SOSScreenState extends State<SOSScreen> {
 
             // Description Input
             const Text(
-              'विवरण लिखें (Description)',
+              'विवरण लिखें * (Description - Required)',
               style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
             ),
             const SizedBox(height: 10),
