@@ -79,45 +79,88 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     _initFCMToken();
   }
 
-  /// Requests notification permission, gets the FCM token, and saves it
-  /// to Firestore so the Vercel backend can send targeted/broadcast pushes.
+  /// Requests notification permission, configures foreground presentation,
+  /// and continuously syncs the FCM token to Firestore on auth state changes.
   Future<void> _initFCMToken() async {
     try {
       final messaging = FirebaseMessaging.instance;
 
-      // Request permission (required on iOS; shows system dialog)
+      // Request permission
       await messaging.requestPermission(
         alert: true,
         badge: true,
         sound: true,
       );
 
-      // Subscribe to sos_alerts topic (legacy fallback)
+      // Enable foreground notification presentation options
+      await messaging.setForegroundNotificationPresentationOptions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+
+      // Subscribe to sos_alerts topic
       await messaging.subscribeToTopic('sos_alerts');
 
-      // Get the FCM registration token for this device
-      final token = await messaging.getToken();
-      if (token == null) return;
-
-      // Save token to Firestore against the logged-in user
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) return;
-
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .set({'fcmToken': token}, SetOptions(merge: true));
-
-      debugPrint('FCM token saved for uid: ${user.uid}');
-
-      // Listen for token refresh and update Firestore
-      messaging.onTokenRefresh.listen((newToken) async {
-        final currentUser = FirebaseAuth.instance.currentUser;
-        if (currentUser == null) return;
+      // Helper function to save token to current user's doc
+      Future<void> saveToken(String token) async {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user == null) return;
         await FirebaseFirestore.instance
             .collection('users')
-            .doc(currentUser.uid)
-            .set({'fcmToken': newToken}, SetOptions(merge: true));
+            .doc(user.uid)
+            .set({'fcmToken': token}, SetOptions(merge: true));
+        debugPrint('FCM token synced for uid ${user.uid}');
+      }
+
+      // Initial token fetch and save
+      final token = await messaging.getToken();
+      if (token != null) {
+        await saveToken(token);
+      }
+
+      // Sync token whenever user logs in or auth state changes
+      FirebaseAuth.instance.authStateChanges().listen((user) async {
+        if (user != null) {
+          final t = await messaging.getToken();
+          if (t != null) await saveToken(t);
+        }
+      });
+
+      // Sync on token refresh
+      messaging.onTokenRefresh.listen((newToken) async {
+        await saveToken(newToken);
+      });
+
+      // Handle foreground messages while app is open
+      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+        final notification = message.notification;
+        if (notification != null && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.notifications_active, color: Colors.white),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(notification.title ?? 'नोफिकेशन', style: const TextStyle(fontWeight: FontWeight.bold)),
+                        if (notification.body != null)
+                          Text(notification.body!, style: const TextStyle(fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor: const Color(0xFF10B981),
+              duration: const Duration(seconds: 4),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
       });
     } catch (e) {
       debugPrint('FCM token init error: $e');
