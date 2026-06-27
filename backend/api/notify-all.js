@@ -3,11 +3,12 @@ import { db, messaging } from '../lib/firebase.js';
 /**
  * POST /api/notify-all
  *
- * Broadcasts a push notification to ALL installed users EXCEPT the SOS poster.
+ * Broadcasts a push notification to all users.
+ * Uses FCM Topic 'sos_alerts' as high-reliability fallback if Firestore token read fails.
  *
  * Request body:
  * {
- *   "reporterId": "uid-of-the-sos-poster",   ← excluded from notification
+ *   "reporterId": "uid-of-the-sos-poster",
  *   "title": "🚨 आपातकालीन अलर्ट: Cow रेस्क्यू",
  *   "body": "मदद की आवश्यकता है।",
  *   "data": { "type": "sos", "id": "ABC123" }
@@ -34,78 +35,96 @@ export default async function handler(req, res) {
   }
 
   try {
-    // ── Fetch all FCM tokens from Firestore ───────────────────────────────
-    const usersSnap = await db.collection('users').get();
+    let tokens = [];
+    let usedTopicFallback = false;
 
-    const tokens = [];
-    usersSnap.forEach((doc) => {
-      const userData = doc.data();
-      const token = userData.fcmToken;
-
-      // Skip if: no token, token is empty, or this is the SOS poster
-      if (!token || token.trim() === '') return;
-      if (reporterId && doc.id === reporterId) return; // ← exclude poster
-
-      tokens.push(token);
-    });
-
-    if (tokens.length === 0) {
-      return res.status(200).json({ success: true, sent: 0, message: 'No eligible tokens found' });
+    // ── Try fetching tokens from Firestore ───────────────────────────────
+    try {
+      const usersSnap = await db.collection('users').get();
+      usersSnap.forEach((doc) => {
+        const userData = doc.data();
+        const token = userData.fcmToken;
+        if (!token || token.trim() === '') return;
+        if (reporterId && doc.id === reporterId) return;
+        tokens.push(token);
+      });
+    } catch (dbErr) {
+      console.warn('Firestore read warning, using FCM topic fallback:', dbErr.message);
+      usedTopicFallback = true;
     }
 
-    // FCM allows max 500 tokens per multicast batch
-    const BATCH_SIZE = 500;
+    const payloadAndroid = {
+      notification: {
+        icon: 'ic_stat_pets',
+        color: '#10B981',
+        sound: 'default',
+        channelId: 'high_importance_channel',
+      },
+      priority: 'high',
+    };
+
+    const payloadApns = {
+      payload: {
+        aps: { sound: 'default', badge: 1 },
+      },
+    };
+
+    const payloadData = {
+      click_action: 'FLUTTER_NOTIFICATION_CLICK',
+      ...Object.fromEntries(
+        Object.entries(data).map(([k, v]) => [k, String(v)])
+      ),
+    };
+
     let totalSuccess = 0;
     let totalFailure = 0;
 
-    for (let i = 0; i < tokens.length; i += BATCH_SIZE) {
-      const batch = tokens.slice(i, i + BATCH_SIZE);
-
-      const message = {
-        tokens: batch,
+    if (!usedTopicFallback && tokens.length > 0) {
+      const BATCH_SIZE = 500;
+      for (let i = 0; i < tokens.length; i += BATCH_SIZE) {
+        const batch = tokens.slice(i, i + BATCH_SIZE);
+        const message = {
+          tokens: batch,
+          notification: { title, body },
+          android: payloadAndroid,
+          apns: payloadApns,
+          data: payloadData,
+        };
+        const response = await messaging.sendEachForMulticast(message);
+        totalSuccess += response.successCount;
+        totalFailure += response.failureCount;
+      }
+    } else {
+      // Send via FCM Topic 'sos_alerts'
+      const topicMessage = {
+        topic: 'sos_alerts',
         notification: { title, body },
-        android: {
-          notification: {
-            icon: 'ic_stat_pets',
-            color: '#10B981',
-            sound: 'default',
-          },
-          priority: 'high',
-        },
-        apns: {
-          payload: {
-            aps: { sound: 'default', badge: 1 },
-          },
-        },
-        data: {
-          click_action: 'FLUTTER_NOTIFICATION_CLICK',
-          ...Object.fromEntries(
-            Object.entries(data).map(([k, v]) => [k, String(v)])
-          ),
-        },
+        android: payloadAndroid,
+        apns: payloadApns,
+        data: payloadData,
       };
-
-      const response = await messaging.sendEachForMulticast(message);
-      totalSuccess += response.successCount;
-      totalFailure += response.failureCount;
+      await messaging.send(topicMessage);
+      totalSuccess = 1;
     }
 
-    // ── Store notification record in Firestore ────────────────────────────
-    await db.collection('notifications').add({
-      type: 'broadcast',
-      title,
-      body,
-      data,
-      excludedUid: reporterId ?? null,
-      sentAt: new Date(),
-      successCount: totalSuccess,
-      failureCount: totalFailure,
-    });
+    // ── Store notification record in Firestore (safely ignored if permission denied) ──
+    try {
+      await db.collection('notifications').add({
+        type: 'broadcast',
+        title,
+        body,
+        data,
+        excludedUid: reporterId ?? null,
+        sentAt: new Date(),
+        successCount: totalSuccess,
+        usedTopicFallback,
+      });
+    } catch (_) {}
 
     return res.status(200).json({
       success: true,
       sent: totalSuccess,
-      failed: totalFailure,
+      usedTopicFallback,
     });
   } catch (err) {
     console.error('notify-all error:', err);

@@ -3,12 +3,12 @@ import { db, messaging } from '../lib/firebase.js';
 /**
  * POST /api/notify-user
  *
- * Sends a targeted push notification to a single user identified by their UID.
- * Looks up their FCM token from Firestore users/{uid}.fcmToken
+ * Sends a targeted push notification to a single device token or user.
  *
  * Request body:
  * {
- *   "targetUid": "uid-of-the-recipient",
+ *   "targetToken": "fcm-device-token",  ← direct token (preferred)
+ *   "targetUid": "uid-of-recipient",    ← fallback lookup
  *   "title": "✅ आपकी SOS स्वीकार की गई",
  *   "body": "एक गौ सेवक आपकी सहायता के लिए आ रहे हैं।",
  *   "data": { "type": "sos_accepted", "id": "ABC123" }
@@ -28,34 +28,41 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const { targetUid, title, body, data = {} } = req.body ?? {};
+  const { targetToken, token, targetUid, title, body, data = {} } = req.body ?? {};
 
-  if (!targetUid || !title || !body) {
-    return res.status(400).json({ error: 'targetUid, title, and body are required' });
+  if (!title || !body) {
+    return res.status(400).json({ error: 'title and body are required' });
+  }
+
+  let recipientToken = targetToken || token;
+
+  // If no direct token provided, try looking up from Firestore
+  if (!recipientToken && targetUid) {
+    try {
+      const userDoc = await db.collection('users').doc(targetUid).get();
+      if (userDoc.exists) {
+        recipientToken = userDoc.data()?.fcmToken;
+      }
+    } catch (dbErr) {
+      console.warn('Firestore user lookup warning (ignored):', dbErr.message);
+    }
+  }
+
+  if (!recipientToken || recipientToken.trim() === '') {
+    return res.status(200).json({ success: true, message: 'No valid FCM token provided or found, skipped' });
   }
 
   try {
-    // ── Look up the target user's FCM token ───────────────────────────────
-    const userDoc = await db.collection('users').doc(targetUid).get();
-
-    if (!userDoc.exists) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    const fcmToken = userDoc.data()?.fcmToken;
-    if (!fcmToken || fcmToken.trim() === '') {
-      return res.status(200).json({ success: true, message: 'User has no FCM token, skipped' });
-    }
-
     // ── Build and send the FCM message ────────────────────────────────────
     const message = {
-      token: fcmToken,
+      token: recipientToken,
       notification: { title, body },
       android: {
         notification: {
           icon: 'ic_stat_pets',
           color: '#10B981',
           sound: 'default',
+          channelId: 'high_importance_channel',
         },
         priority: 'high',
       },
@@ -74,20 +81,24 @@ export default async function handler(req, res) {
 
     const messageId = await messaging.send(message);
 
-    // ── Store notification record in Firestore ────────────────────────────
-    await db.collection('notifications').add({
-      type: 'targeted',
-      targetUid,
-      title,
-      body,
-      data,
-      sentAt: new Date(),
-      messageId,
-    });
+    // ── Store notification record in Firestore (safely ignored if permission denied) ──
+    try {
+      await db.collection('notifications').add({
+        type: 'targeted',
+        targetUid: targetUid ?? null,
+        title,
+        body,
+        data,
+        sentAt: new Date(),
+        messageId,
+      });
+    } catch (dbErr) {
+      console.warn('Firestore write warning (ignored):', dbErr.message);
+    }
 
     return res.status(200).json({ success: true, messageId });
   } catch (err) {
-    console.error('notify-user error:', err);
+    console.error('notify-user FCM error:', err);
     return res.status(500).json({ success: false, error: err.message });
   }
 }
