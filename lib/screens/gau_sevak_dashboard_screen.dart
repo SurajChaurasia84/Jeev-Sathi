@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'sos_report_detail_screen.dart';
+import '../services/notification_service.dart';
 
 class GauSevakDashboardScreen extends StatefulWidget {
   const GauSevakDashboardScreen({super.key});
@@ -26,7 +27,12 @@ class _GauSevakDashboardScreenState extends State<GauSevakDashboardScreen> with 
     super.dispose();
   }
 
-  Future<void> _markCaseAsResolved(BuildContext context, String docId, String animalName) async {
+  Future<void> _markCaseAsResolved(
+    BuildContext context,
+    String docId,
+    String animalName, {
+    String reporterId = '',
+  }) async {
     final bool? confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -76,7 +82,16 @@ class _GauSevakDashboardScreenState extends State<GauSevakDashboardScreen> with 
         await FirebaseFirestore.instance.collection('sos_reports').doc(docId).update({
           'status': 'Resolved (सुलझाया)'
         });
-        
+
+        // Notify the SOS reporter that their case is resolved
+        if (reporterId.isNotEmpty && reporterId != 'anonymous') {
+          NotificationService.notifySOSResolved(
+            reporterUid: reporterId,
+            animal: animalName,
+            reportId: docId.substring(0, 6).toUpperCase(),
+          );
+        }
+
         if (context.mounted) {
           Navigator.pop(context); // Dismiss loader
           ScaffoldMessenger.of(context).showSnackBar(
@@ -96,6 +111,66 @@ class _GauSevakDashboardScreenState extends State<GauSevakDashboardScreen> with 
             ),
           );
         }
+      }
+    }
+  }
+
+  /// Marks a case as Accepted and notifies the SOS reporter.
+  Future<void> _acceptCase(
+    BuildContext context,
+    String docId,
+    String animalName, {
+    required String reporterId,
+  }) async {
+    final user = FirebaseAuth.instance.currentUser;
+    final sevakName = user?.displayName ?? 'गौ सेवक';
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(
+          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF10B981)),
+        ),
+      ),
+    );
+
+    try {
+      await FirebaseFirestore.instance.collection('sos_reports').doc(docId).update({
+        'status': 'Accepted (स्वीकृत)',
+        'acceptedBy': user?.uid,
+        'acceptedByName': sevakName,
+        'acceptedAt': FieldValue.serverTimestamp(),
+      });
+
+      // Notify the SOS reporter
+      if (reporterId.isNotEmpty && reporterId != 'anonymous') {
+        NotificationService.notifySOSAccepted(
+          reporterUid: reporterId,
+          animal: animalName,
+          reportId: docId.substring(0, 6).toUpperCase(),
+          sevakName: sevakName,
+        );
+      }
+
+      if (context.mounted) {
+        Navigator.pop(context); // Dismiss loader
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$animalName केस स्वीकार किया गया! रिपोर्टर को सूचित किया गया। ✅'),
+            backgroundColor: const Color(0xFF10B981),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('अपडेट करने में विफल: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }
@@ -307,9 +382,11 @@ class _GauSevakDashboardScreenState extends State<GauSevakDashboardScreen> with 
 
         final String animal = data['animal'] ?? 'Cow';
         final String creator = data['reporterName'] ?? 'Anonymous';
+        final String reporterId = data['reporterId'] ?? '';
         final String? imageUrl = data['imageUrl'];
         final String description = data['description'] ?? '';
         final String status = data['status'] ?? 'Active';
+        final bool isAccepted = status.contains('Accepted') || status.contains('स्वीकृत');
 
         final double? lat = data['latitude'] is num ? (data['latitude'] as num).toDouble() : null;
         final double? lng = data['longitude'] is num ? (data['longitude'] as num).toDouble() : null;
@@ -368,7 +445,7 @@ class _GauSevakDashboardScreenState extends State<GauSevakDashboardScreen> with 
                               children: [
                                 Expanded(
                                   child: Text(
-                                    '#SOS-$docIdStr • प्रेषक: $creator',
+                                    '#SOS-$docIdStr • $creator',
                                     style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
@@ -472,6 +549,25 @@ class _GauSevakDashboardScreenState extends State<GauSevakDashboardScreen> with 
                     ),
                     if (isActive) ...[
                       const SizedBox(width: 8),
+                      // Accept button (only if not already accepted)
+                      if (!isAccepted)
+                        OutlinedButton(
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size(60, 32),
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            side: const BorderSide(color: Color(0xFF10B981)),
+                            foregroundColor: const Color(0xFF10B981),
+                          ),
+                          onPressed: () => _acceptCase(
+                            context,
+                            doc.id,
+                            animal,
+                            reporterId: reporterId,
+                          ),
+                          child: const Text('स्वीकार करें', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                        ),
+                      const SizedBox(width: 8),
                       // Mark resolved button
                       ElevatedButton(
                         style: ElevatedButton.styleFrom(
@@ -482,7 +578,12 @@ class _GauSevakDashboardScreenState extends State<GauSevakDashboardScreen> with 
                           foregroundColor: Colors.white,
                           elevation: 0,
                         ),
-                        onPressed: () => _markCaseAsResolved(context, doc.id, animal),
+                        onPressed: () => _markCaseAsResolved(
+                          context,
+                          doc.id,
+                          animal,
+                          reporterId: reporterId,
+                        ),
                         child: const Text('मार्क सुलझ गया', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                       ),
                     ],
