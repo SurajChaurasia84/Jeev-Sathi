@@ -5,6 +5,8 @@ import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
+import '../services/cloudinary_service.dart';
+import '../widgets/safe_avatar.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -126,19 +128,45 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           final destinationFile = File('${appDocDir.path}/profile_${_currentUser!.uid}.png');
 
           if (_localProfileImage == null) {
-            // Remove
+            // Remove local copy
             if (await destinationFile.exists()) {
               await destinationFile.delete();
             }
             await prefs.remove('profile_image_path_${_currentUser!.uid}');
             await _currentUser!.updatePhotoURL(null);
+            // Clear photoUrl in Firestore
+            await FirebaseFirestore.instance
+                .collection('users')
+                .doc(_currentUser!.uid)
+                .set({'photoUrl': ''}, SetOptions(merge: true));
           } else {
-            // Save/Overwrite
+            // Save local copy
             if (_localProfileImage!.path != destinationFile.path) {
               await _localProfileImage!.copy(destinationFile.path);
             }
             await prefs.setString('profile_image_path_${_currentUser!.uid}', destinationFile.path);
-            await _currentUser!.updatePhotoURL(destinationFile.path);
+
+            // Upload to Cloudinary and save URL in Firestore
+            try {
+              final uploadedUrl = await CloudinaryService.uploadImage(_localProfileImage!);
+              if (uploadedUrl.isNotEmpty) {
+                await _currentUser!.updatePhotoURL(uploadedUrl);
+                await FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(_currentUser!.uid)
+                    .set({'photoUrl': uploadedUrl}, SetOptions(merge: true));
+              }
+            } catch (uploadError) {
+              // Cloudinary upload failed — show error to user
+              if (mounted) {
+                _showSnackBar(
+                  '⚠️ फोटो अपलोड विफल: ${uploadError.toString().replaceFirst("Exception: ", "")}',
+                  isError: true,
+                );
+              }
+              // Still save local path as fallback in Auth
+              await _currentUser!.updatePhotoURL(destinationFile.path);
+            }
           }
         }
 
@@ -246,25 +274,20 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                   onTap: _showImagePickerOptions,
                                   child: Stack(
                                     children: [
-                                      CircleAvatar(
+                                       SafeNetworkAvatar(
                                         radius: 46,
                                         backgroundColor: const Color(0xFF10B981).withValues(alpha: 0.1),
-                                        backgroundImage: _localProfileImage != null
-                                            ? FileImage(_localProfileImage!)
-                                            : ((_firestorePhotoUrl != null && 
-                                                _firestorePhotoUrl!.isNotEmpty && 
+                                        localFile: _localProfileImage,
+                                        photoUrl: (_localProfileImage == null)
+                                            ? ((_firestorePhotoUrl != null &&
+                                                _firestorePhotoUrl!.isNotEmpty &&
                                                 _firestorePhotoUrl!.startsWith('http'))
-                                                ? NetworkImage(_firestorePhotoUrl!)
-                                                : (_currentUser != null && _getNetworkProfileUrl(_currentUser!) != null
-                                                     ? NetworkImage(_getNetworkProfileUrl(_currentUser!)!)
-                                                     : null)),
-                                        child: (_localProfileImage == null && 
-                                                (_firestorePhotoUrl == null || 
-                                                 _firestorePhotoUrl!.isEmpty || 
-                                                 !_firestorePhotoUrl!.startsWith('http')) &&
-                                                (_currentUser == null || _getNetworkProfileUrl(_currentUser!) == null))
-                                            ? const Icon(Icons.person, size: 46, color: Color(0xFF10B981))
+                                                ? _firestorePhotoUrl
+                                                : (_currentUser != null
+                                                    ? _getNetworkProfileUrl(_currentUser!)
+                                                    : null))
                                             : null,
+                                        fallbackChild: const Icon(Icons.person, size: 46, color: Color(0xFF10B981)),
                                       ),
                                       Positioned(
                                         bottom: 0,
