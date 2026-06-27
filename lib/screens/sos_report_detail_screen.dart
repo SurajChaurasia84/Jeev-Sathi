@@ -1,35 +1,137 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
 import '../services/cloudinary_service.dart';
 
-class SOSReportDetailScreen extends StatelessWidget {
+class SOSReportDetailScreen extends StatefulWidget {
   final Map<String, dynamic> data;
 
   const SOSReportDetailScreen({super.key, required this.data});
 
   @override
+  State<SOSReportDetailScreen> createState() => _SOSReportDetailScreenState();
+}
+
+class _SOSReportDetailScreenState extends State<SOSReportDetailScreen> {
+  String _placeName = 'स्थान की जानकारी लोड हो रही है...';
+  String? _distanceStr;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLocationDetails();
+  }
+
+  Future<void> _loadLocationDetails() async {
+    final double? reportLat = widget.data['latitude'] is num ? (widget.data['latitude'] as num).toDouble() : null;
+    final double? reportLng = widget.data['longitude'] is num ? (widget.data['longitude'] as num).toDouble() : null;
+
+    if (reportLat == null || reportLng == null) {
+      if (mounted) {
+        setState(() {
+          _placeName = 'जयपुर, राजस्थान';
+        });
+      }
+      return;
+    }
+
+    String place = 'जयपुर, राजस्थान';
+    String? dist;
+
+    // 1. Fetch Reverse Geocode for City/Place Name in words
+    try {
+      final url = Uri.parse(
+        'https://nominatim.openstreetmap.org/reverse?format=json&lat=$reportLat&lon=$reportLng&zoom=14&addressdetails=1',
+      );
+      final res = await http.get(url, headers: {
+        'User-Agent': 'JeevSathiApp/1.0',
+      }).timeout(const Duration(seconds: 4));
+
+      if (res.statusCode == 200) {
+        final Map<String, dynamic> json = jsonDecode(res.body);
+        final address = json['address'] as Map<String, dynamic>?;
+        if (address != null) {
+          final String? suburb = address['suburb'] ?? address['neighbourhood'] ?? address['residential'];
+          final String? city = address['city'] ?? address['town'] ?? address['village'] ?? address['county'] ?? address['state_district'];
+          final String? state = address['state'];
+
+          final List<String> parts = [];
+          if (suburb != null && suburb.isNotEmpty) parts.add(suburb);
+          if (city != null && city.isNotEmpty && city != suburb) parts.add(city);
+          if (parts.isEmpty && state != null && state.isNotEmpty) parts.add(state);
+
+          if (parts.isNotEmpty) {
+            place = parts.join(', ');
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Reverse geocode error: $e');
+    }
+
+    // 2. Calculate Distance from Current User
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.always || permission == LocationPermission.whileInUse) {
+        Position? position = await Geolocator.getLastKnownPosition();
+        position ??= await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(accuracy: LocationAccuracy.low),
+        ).timeout(const Duration(seconds: 4));
+
+        final double distanceInMeters = Geolocator.distanceBetween(
+          position.latitude,
+          position.longitude,
+          reportLat,
+          reportLng,
+        );
+
+        if (distanceInMeters >= 1000) {
+          dist = '${(distanceInMeters / 1000).toStringAsFixed(1)} km दूर';
+        } else {
+          dist = '${distanceInMeters.round()} m दूर';
+        }
+      }
+    } catch (e) {
+      debugPrint('Geolocator position error: $e');
+    }
+
+    if (mounted) {
+      setState(() {
+        _placeName = place;
+        _distanceStr = dist;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final String animal = data['animal'] ?? 'Cow';
-    final String id = data['id'] ?? 'SOS';
-    final String descRaw = data['description'] ?? '';
+    final String animal = widget.data['animal'] ?? 'Cow';
+    final String id = widget.data['id'] ?? 'SOS';
+    final String descRaw = widget.data['description'] ?? '';
     final String desc = descRaw.trim().isEmpty ? 'कोई विवरण उपलब्ध नहीं है।' : descRaw;
-    final String? imageUrl = data['imageUrl'];
-    final String status = data['status'] ?? 'In Progress (सक्रिय)';
-    final String creator = data['reporterName'] ?? 'Anonymous';
-    final double? lat = data['latitude'] is num ? (data['latitude'] as num).toDouble() : null;
-    final double? lng = data['longitude'] is num ? (data['longitude'] as num).toDouble() : null;
-    final String reporterId = data['reporterId'] ?? '';
-    final String? docId = data['docId'];
-    final String? reporterPhone = data['reporterPhone'];
+    final String? imageUrl = widget.data['imageUrl'];
+    final String status = widget.data['status'] ?? 'In Progress (सक्रिय)';
+    final String creator = widget.data['reporterName'] ?? 'Anonymous';
+    final double? lat = widget.data['latitude'] is num ? (widget.data['latitude'] as num).toDouble() : null;
+    final double? lng = widget.data['longitude'] is num ? (widget.data['longitude'] as num).toDouble() : null;
+    final String reporterId = widget.data['reporterId'] ?? '';
+    final String? docId = widget.data['docId'];
+    final String? reporterPhone = widget.data['reporterPhone'];
     final currentUser = FirebaseAuth.instance.currentUser;
     final bool isMyReport = currentUser != null && currentUser.uid == reporterId;
-    
+
     // Format timestamp if available
     String dateStr = 'हाल ही में';
-    if (data['createdAt'] != null) {
-      final Timestamp timestamp = data['createdAt'] as Timestamp;
+    if (widget.data['createdAt'] != null) {
+      final Timestamp timestamp = widget.data['createdAt'] as Timestamp;
       final DateTime date = timestamp.toDate();
       dateStr = '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
     }
@@ -190,8 +292,8 @@ class SOSReportDetailScreen extends StatelessWidget {
                           Text(
                             '$animal रेस्क्यू रिपोर्ट',
                             style: const TextStyle(
-                              fontSize: 20, 
-                              fontWeight: FontWeight.bold, 
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
                               color: Color(0xFF0F172A),
                             ),
                           ),
@@ -206,8 +308,8 @@ class SOSReportDetailScreen extends StatelessWidget {
                         child: Text(
                           status,
                           style: TextStyle(
-                            color: statusColor, 
-                            fontWeight: FontWeight.bold, 
+                            color: statusColor,
+                            fontWeight: FontWeight.bold,
                             fontSize: 12,
                           ),
                         ),
@@ -242,7 +344,6 @@ class SOSReportDetailScreen extends StatelessWidget {
                                 if (await canLaunchUrl(launchUri)) {
                                   await launchUrl(launchUri, mode: LaunchMode.externalApplication);
                                 } else {
-                                  // Direct attempt in case canLaunchUrl is blocked
                                   await launchUrl(launchUri, mode: LaunchMode.externalApplication);
                                 }
                               } catch (e) {
@@ -277,8 +378,8 @@ class SOSReportDetailScreen extends StatelessWidget {
                     child: Text(
                       desc,
                       style: const TextStyle(
-                        fontSize: 14, 
-                        color: Color(0xFF334155), 
+                        fontSize: 14,
+                        color: Color(0xFF334155),
                         height: 1.5,
                         fontStyle: FontStyle.italic,
                       ),
@@ -293,6 +394,7 @@ class SOSReportDetailScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Container(
+                    width: double.infinity,
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
                       color: Colors.white,
@@ -302,14 +404,26 @@ class SOSReportDetailScreen extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          (lat != null && lng != null)
-                              ? 'अक्षांश: ${lat.toStringAsFixed(6)}° N, रेखांश: ${lng.toStringAsFixed(6)}° E'
-                              : 'जयपुर राजस्थान (26.91° N, 75.78° E)',
-                          style: const TextStyle(fontSize: 13, color: Color(0xFF334155)),
+                        Row(
+                          children: [
+                            const Icon(Icons.location_on, color: Color(0xFFEF4444), size: 22),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _distanceStr != null
+                                    ? '$_placeName • $_distanceStr'
+                                    : _placeName,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF0F172A),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                         if (lat != null && lng != null) ...[
-                          const SizedBox(height: 12),
+                          const SizedBox(height: 14),
                           ElevatedButton.icon(
                             onPressed: () async {
                               final Uri googleMapsUrl = Uri.parse(
@@ -429,16 +543,15 @@ class SOSReportDetailScreen extends StatelessWidget {
       );
 
       try {
-        final String? imageUrl = data['imageUrl'];
+        final String? imageUrl = widget.data['imageUrl'];
         if (imageUrl != null && imageUrl.isNotEmpty) {
           try {
             await CloudinaryService.deleteImage(imageUrl);
-          } catch (_) {
-          }
+          } catch (_) {}
         }
 
         await FirebaseFirestore.instance.collection('sos_reports').doc(docId).delete();
-        
+
         if (context.mounted) {
           Navigator.pop(context); // Dismiss loader
           Navigator.pop(context); // Go back
