@@ -47,6 +47,8 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-
 #firebase api 
 /android/app/google-services.json
+
+#node_modules
+/backend/node_modules/
