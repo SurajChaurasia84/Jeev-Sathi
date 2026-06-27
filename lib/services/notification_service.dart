@@ -43,9 +43,11 @@ class NotificationService {
     required String animal,
     required String reportId,
     required String sevakName,
+    String? targetToken,
   }) async {
     await _post('/api/notify-user', {
       'targetUid': reporterUid,
+      if (targetToken != null && targetToken.isNotEmpty) 'targetToken': targetToken,
       'title': '✅ आपकी SOS स्वीकार की गई!',
       'body': '$sevakName आपके $animal की सहायता के लिए आ रहे हैं।',
       'data': {
@@ -60,9 +62,11 @@ class NotificationService {
     required String reporterUid,
     required String animal,
     required String reportId,
+    String? targetToken,
   }) async {
     await _post('/api/notify-user', {
       'targetUid': reporterUid,
+      if (targetToken != null && targetToken.isNotEmpty) 'targetToken': targetToken,
       'title': '🎉 SOS रेस्क्यू पूर्ण!',
       'body': 'आपके $animal का रेस्क्यू सफलतापूर्वक पूर्ण हो गया। धन्यवाद!',
       'data': {
