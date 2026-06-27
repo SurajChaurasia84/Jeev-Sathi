@@ -8,7 +8,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/cloudinary_service.dart';
+import '../services/notification_service.dart';
 import 'sos_report_detail_screen.dart';
+import '../widgets/safe_avatar.dart';
 
 class SOSScreen extends StatefulWidget {
   const SOSScreen({super.key});
@@ -61,6 +63,16 @@ class _SOSScreenState extends State<SOSScreen> {
   DocumentSnapshot? _lastSevakDocument;
   late final ScrollController _sevakScrollController;
 
+  // Doctor tab state
+  final List<DocumentSnapshot> _doctors = [];
+  bool _isLoadingDoctors = false;
+  bool _hasMoreDoctors = true;
+  DocumentSnapshot? _lastDoctorDocument;
+  late final ScrollController _doctorScrollController;
+
+  // Profile photo cache: uid -> photoUrl
+  final Map<String, String?> _photoUrlCache = {};
+
   @override
   void initState() {
     super.initState();
@@ -71,7 +83,15 @@ class _SOSScreenState extends State<SOSScreen> {
         _loadMoreGauSevaks();
       }
     });
+    _doctorScrollController = ScrollController();
+    _doctorScrollController.addListener(() {
+      if (_doctorScrollController.position.pixels >=
+          _doctorScrollController.position.maxScrollExtent - 200) {
+        _loadMoreDoctors();
+      }
+    });
     _loadMoreGauSevaks();
+    _loadMoreDoctors();
   }
 
   Future<void> _getCurrentLocation() async {
@@ -232,9 +252,56 @@ class _SOSScreenState extends State<SOSScreen> {
     await _loadMoreGauSevaks();
   }
 
+  Future<void> _loadMoreDoctors() async {
+    if (_isLoadingDoctors || !_hasMoreDoctors) return;
+    setState(() { _isLoadingDoctors = true; });
+    try {
+      Query query = FirebaseFirestore.instance
+          .collection('doctors')
+          .orderBy('registeredAt', descending: true)
+          .limit(10);
+      if (_lastDoctorDocument != null) {
+        query = query.startAfterDocument(_lastDoctorDocument!);
+      }
+      final QuerySnapshot snap = await query.get();
+      if (snap.docs.length < 10) _hasMoreDoctors = false;
+      if (snap.docs.isNotEmpty) {
+        _lastDoctorDocument = snap.docs.last;
+        setState(() { _doctors.addAll(snap.docs); });
+      }
+    } catch (_) {
+    } finally {
+      setState(() { _isLoadingDoctors = false; });
+    }
+  }
+
+  Future<void> _refreshDoctors() async {
+    setState(() {
+      _doctors.clear();
+      _lastDoctorDocument = null;
+      _hasMoreDoctors = true;
+    });
+    await _loadMoreDoctors();
+  }
+
+  /// Fetches and caches the photoUrl for a given uid from the users collection
+  Future<String?> _fetchPhotoUrl(String uid) async {
+    if (_photoUrlCache.containsKey(uid)) return _photoUrlCache[uid];
+    try {
+      final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      final url = (doc.data())?['photoUrl'] as String?;
+      _photoUrlCache[uid] = url;
+      return url;
+    } catch (_) {
+      _photoUrlCache[uid] = null;
+      return null;
+    }
+  }
+
   @override
   void dispose() {
     _sevakScrollController.dispose();
+    _doctorScrollController.dispose();
     _descriptionController.dispose();
     _reporterPhoneController.dispose();
     super.dispose();
@@ -269,8 +336,9 @@ class _SOSScreenState extends State<SOSScreen> {
         'reporterPhone': _reporterPhoneController.text.trim(),
       });
 
-      // Send push notification to all users subscribed to 'sos_alerts'
-      FCMService.sendSOSNotification(
+      // Send push notification to all users (except the SOS poster)
+      NotificationService.notifyNewSOS(
+        reporterId: user?.uid ?? 'anonymous',
         animal: _selectedAnimal,
         description: _descriptionController.text.trim(),
         reportId: newReportDoc.id.substring(0, 6).toUpperCase(),
@@ -377,7 +445,7 @@ class _SOSScreenState extends State<SOSScreen> {
             )
           : Column(
               children: [
-                // Sub tabs (Report, Status, Sevak)
+                // Sub tabs (Report, Status, Sevak, Doctor)
                 Container(
                   color: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 8),
@@ -386,6 +454,7 @@ class _SOSScreenState extends State<SOSScreen> {
                       _buildSubTab(0, '📍 Report', const Color(0xFFEF4444)),
                       _buildSubTab(1, '📊 Status', const Color(0xFFEF4444)),
                       _buildSubTab(2, '🤝 Sevak', const Color(0xFFEF4444)),
+                      _buildSubTab(3, '🩺 Doctor', const Color(0xFFEC4899)),
                     ],
                   ),
                 ),
@@ -394,7 +463,9 @@ class _SOSScreenState extends State<SOSScreen> {
                       ? _buildReportTab()
                       : _activeSubTab == 1
                           ? _buildStatusTab()
-                          : _buildSevakTab(),
+                          : _activeSubTab == 2
+                              ? _buildSevakTab()
+                              : _buildDoctorTab(),
                 ),
               ],
             ),
@@ -1079,6 +1150,7 @@ class _SOSScreenState extends State<SOSScreen> {
           final doc = _gauSevaks[index];
           final data = doc.data() as Map<String, dynamic>;
 
+          final String uidStr = data['uid'] as String? ?? doc.id;
           final String nameStr = data['name'] ?? 'Gau Sevak';
           final String districtStr = data['district'] ?? 'Rajasthan';
           final String villageStr = data['village'] ?? '';
@@ -1089,12 +1161,18 @@ class _SOSScreenState extends State<SOSScreen> {
           final skillsStr = skillsList.join(', ');
           final addressStr = villageStr.isNotEmpty ? '$villageStr, $districtStr' : districtStr;
 
-          return _buildSevakItem(
-            name: nameStr,
-            distance: addressStr,
-            skills: skillsStr,
-            phone: phoneStr,
-            isAvailable: isAvailable,
+          return FutureBuilder<String?>(
+            future: _fetchPhotoUrl(uidStr),
+            builder: (context, photoSnap) {
+              return _buildSevakItem(
+                name: nameStr,
+                distance: addressStr,
+                skills: skillsStr,
+                phone: phoneStr,
+                isAvailable: isAvailable,
+                photoUrl: photoSnap.data,
+              );
+            },
           );
         },
       ),
@@ -1107,16 +1185,20 @@ class _SOSScreenState extends State<SOSScreen> {
     required String skills,
     required String phone,
     required bool isAvailable,
+    String? photoUrl,
   }) {
+    final hasPhoto = photoUrl != null && photoUrl.isNotEmpty && photoUrl.startsWith('http');
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       elevation: 1,
       child: ListTile(
         contentPadding: const EdgeInsets.all(16),
-        leading: CircleAvatar(
+        leading: SafeNetworkAvatar(
+          radius: 24,
           backgroundColor: const Color(0xFF10B981).withValues(alpha: 0.1),
-          child: const Text('🤝', style: TextStyle(fontSize: 18)),
+          photoUrl: hasPhoto ? photoUrl : null,
+          fallbackChild: const Text('🤝', style: TextStyle(fontSize: 18)),
         ),
         title: Row(
           children: [
@@ -1149,6 +1231,156 @@ class _SOSScreenState extends State<SOSScreen> {
         ),
         trailing: IconButton(
           icon: const Icon(Icons.call, color: Color(0xFF10B981)),
+          onPressed: () {
+            _showCallDialog(context, name, phone);
+          },
+        ),
+      ),
+    );
+  }
+
+  // Sub Tab 4: DOCTOR DIRECTORY
+  Widget _buildDoctorTab() {
+    if (_doctors.isEmpty && _isLoadingDoctors) {
+      return const Center(
+        child: CircularProgressIndicator(
+          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFEC4899)),
+        ),
+      );
+    }
+    if (_doctors.isEmpty && !_isLoadingDoctors) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text('🩺', style: TextStyle(fontSize: 48)),
+              const SizedBox(height: 16),
+              const Text(
+                'कोई पंजीकृत पशु चिकित्सक उपलब्ध नहीं है।',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'प्रोफाइल में जाकर Doctor के रूप में पंजीकरण करें!',
+                style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _refreshDoctors,
+      color: const Color(0xFFEC4899),
+      child: ListView.builder(
+        controller: _doctorScrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        itemCount: _doctors.length + (_hasMoreDoctors ? 1 : 0),
+        itemBuilder: (context, index) {
+          if (index == _doctors.length) {
+            return const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16.0),
+              child: Center(
+                child: CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFEC4899)),
+                ),
+              ),
+            );
+          }
+          final doc = _doctors[index];
+          final data = doc.data() as Map<String, dynamic>;
+          final String uidStr = data['uid'] as String? ?? doc.id;
+          final String nameStr = data['name'] ?? 'Doctor';
+          final String specialization = data['specialization'] ?? '';
+          final String clinicAddress = data['clinicAddress'] ?? '';
+          final String phoneStr = data['phone'] ?? '';
+          final int experience = data['experience'] ?? 0;
+          final bool emergencySupport = data['emergencySupport'] ?? false;
+
+          return FutureBuilder<String?>(
+            future: _fetchPhotoUrl(uidStr),
+            builder: (context, photoSnap) {
+              return _buildDoctorItem(
+                name: nameStr,
+                specialization: specialization,
+                clinicAddress: clinicAddress,
+                phone: phoneStr,
+                experience: experience,
+                emergencySupport: emergencySupport,
+                photoUrl: photoSnap.data,
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildDoctorItem({
+    required String name,
+    required String specialization,
+    required String clinicAddress,
+    required String phone,
+    required int experience,
+    required bool emergencySupport,
+    String? photoUrl,
+  }) {
+    final hasPhoto = photoUrl != null && photoUrl.isNotEmpty && photoUrl.startsWith('http');
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 1,
+      child: ListTile(
+        contentPadding: const EdgeInsets.all(16),
+        leading: SafeNetworkAvatar(
+          radius: 24,
+          backgroundColor: const Color(0xFFEC4899).withValues(alpha: 0.1),
+          photoUrl: hasPhoto ? photoUrl : null,
+          fallbackChild: const Text('🩺', style: TextStyle(fontSize: 18)),
+        ),
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
+                name,
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 8),
+            if (emergencySupport)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEF4444).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Text(
+                  'Emergency',
+                  style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFFEF4444)),
+                ),
+              ),
+          ],
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 4),
+            if (specialization.isNotEmpty)
+              Text('विशेषज्ञता: $specialization', style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+            if (experience > 0)
+              Text('अनुभव: $experience वर्ष', style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
+            if (clinicAddress.isNotEmpty)
+              Text(clinicAddress, style: const TextStyle(fontSize: 11, color: Color(0xFFEC4899), fontWeight: FontWeight.bold)),
+          ],
+        ),
+        trailing: IconButton(
+          icon: const Icon(Icons.call, color: Color(0xFFEC4899)),
           onPressed: () {
             _showCallDialog(context, name, phone);
           },
