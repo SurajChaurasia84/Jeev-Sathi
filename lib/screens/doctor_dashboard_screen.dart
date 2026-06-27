@@ -363,8 +363,10 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> with Sing
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(
-                                  '#SOS-$docIdStr • प्रेषक: $creator',
+                                  '#SOS-$docIdStr • $creator',
                                   style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
