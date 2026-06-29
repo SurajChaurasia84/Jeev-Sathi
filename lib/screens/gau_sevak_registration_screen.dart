@@ -1,6 +1,9 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http;
+import 'package:geolocator/geolocator.dart';
 
 class GauSevakRegistrationScreen extends StatefulWidget {
   const GauSevakRegistrationScreen({super.key});
@@ -12,8 +15,7 @@ class GauSevakRegistrationScreen extends StatefulWidget {
 class _GauSevakRegistrationScreenState extends State<GauSevakRegistrationScreen> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _districtController = TextEditingController();
-  final TextEditingController _villageController = TextEditingController();
+  final TextEditingController _addressController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
 
   final List<String> _skillsList = ['First Aid', 'Transport', 'Cow Care', 'Rescue', 'Nursing', 'Awareness', 'Fundraising'];
@@ -21,6 +23,117 @@ class _GauSevakRegistrationScreenState extends State<GauSevakRegistrationScreen>
   bool _isEmergencyAvailable = true;
   bool _isLoading = false;
   bool _isAlreadyRegistered = false;
+  bool _isFetchingLocation = false;
+  double? _latitude;
+  double? _longitude;
+
+  Future<void> _fetchLocationInWords() async {
+    setState(() {
+      _isFetchingLocation = true;
+    });
+
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('कृपया डिवाइस की लोकेशन सर्विस चालू करें।')),
+          );
+        }
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('लोकेशन अनुमति अस्वीकार कर दी गई।')),
+            );
+          }
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('लोकेशन अनुमति स्थायी रूप से अस्वीकार है, कृपया सेटिंग्स से अनुमति दें।')),
+          );
+        }
+        return;
+      }
+
+      Position position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      ).timeout(const Duration(seconds: 10), onTimeout: () async {
+        final lastPos = await Geolocator.getLastKnownPosition();
+        if (lastPos != null) return lastPos;
+        throw Exception('लोकेशन प्राप्त करने में समय समाप्त हो गया।');
+      });
+
+      _latitude = position.latitude;
+      _longitude = position.longitude;
+
+      final url = Uri.parse(
+        'https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.latitude}&lon=${position.longitude}&zoom=16&addressdetails=1&accept-language=hi,en',
+      );
+      final res = await http.get(url, headers: {
+        'User-Agent': 'JeevSathiApp/1.0',
+      }).timeout(const Duration(seconds: 6));
+
+      if (res.statusCode == 200) {
+        final Map<String, dynamic> json = jsonDecode(res.body);
+        final address = json['address'] as Map<String, dynamic>?;
+
+        if (address != null) {
+          final String? suburb = address['suburb'] ?? address['neighbourhood'] ?? address['residential'];
+          final String? road = address['road'] ?? address['amenity'] ?? address['building'];
+          final String? villageOrTown = address['village'] ?? address['town'];
+
+          final List<String> areaParts = [];
+          if (road != null && road.isNotEmpty) areaParts.add(road);
+          if (suburb != null && suburb.isNotEmpty && !areaParts.contains(suburb)) areaParts.add(suburb);
+          if (villageOrTown != null && villageOrTown.isNotEmpty && !areaParts.contains(villageOrTown)) areaParts.add(villageOrTown);
+
+          if (areaParts.isNotEmpty) {
+            _addressController.text = areaParts.join(', ');
+          } else if (json['display_name'] != null) {
+            final parts = (json['display_name'] as String).split(',');
+            _addressController.text = parts.take(2).join(',').trim();
+          }
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('📍 सटीक लोकल एरिया लोकेशन प्राप्त हो गई!'),
+                backgroundColor: Color(0xFF10B981),
+                behavior: SnackBarBehavior.floating,
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('लोकेशन प्राप्त करने में त्रुटि: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isFetchingLocation = false;
+        });
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -31,8 +144,7 @@ class _GauSevakRegistrationScreenState extends State<GauSevakRegistrationScreen>
   @override
   void dispose() {
     _nameController.dispose();
-    _districtController.dispose();
-    _villageController.dispose();
+    _addressController.dispose();
     _phoneController.dispose();
     super.dispose();
   }
@@ -53,9 +165,10 @@ class _GauSevakRegistrationScreenState extends State<GauSevakRegistrationScreen>
         if (doc.exists && doc.data() != null) {
           final data = doc.data()!;
           _nameController.text = data['name'] ?? '';
-          _districtController.text = data['district'] ?? '';
-          _villageController.text = data['village'] ?? '';
+          _addressController.text = data['address'] ?? data['village'] ?? data['district'] ?? '';
           _phoneController.text = data['phone'] ?? '';
+          _latitude = (data['latitude'] is num) ? (data['latitude'] as num).toDouble() : null;
+          _longitude = (data['longitude'] is num) ? (data['longitude'] as num).toDouble() : null;
 
           if (data['skills'] != null) {
             _selectedSkills.clear();
@@ -82,8 +195,7 @@ class _GauSevakRegistrationScreenState extends State<GauSevakRegistrationScreen>
     }
 
     final name = _nameController.text.trim();
-    final district = _districtController.text.trim();
-    final village = _villageController.text.trim();
+    final address = _addressController.text.trim();
     final phone = _phoneController.text.trim();
 
     setState(() {
@@ -93,17 +205,25 @@ class _GauSevakRegistrationScreenState extends State<GauSevakRegistrationScreen>
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        // 1. Save volunteer details in Firestore
-        await FirebaseFirestore.instance.collection('gau_sevaks').doc(user.uid).set({
+        final gauSevakData = <String, dynamic>{
           'uid': user.uid,
           'name': name,
-          'district': district,
-          'village': village,
+          'address': address,
+          'district': address,
+          'village': address,
           'phone': phone,
           'skills': _selectedSkills,
           'isAvailable': _isEmergencyAvailable,
           'registeredAt': FieldValue.serverTimestamp(),
-        });
+        };
+
+        if (_latitude != null && _longitude != null) {
+          gauSevakData['latitude'] = _latitude;
+          gauSevakData['longitude'] = _longitude;
+        }
+
+        // 1. Save volunteer details in Firestore
+        await FirebaseFirestore.instance.collection('gau_sevaks').doc(user.uid).set(gauSevakData);
 
         // 2. Flag the user profile with isGauSevak true
         await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
@@ -335,21 +455,49 @@ class _GauSevakRegistrationScreenState extends State<GauSevakRegistrationScreen>
                       ),
                       const SizedBox(height: 16),
                       _buildFormInput(
-                        label: 'जिला (District) *',
-                        hint: 'जिले का नाम',
-                        controller: _districtController,
+                        label: 'पता (Address) *',
+                        hint: 'लोकेशन फ़ैच करें बटन पर टैप करें...',
+                        maxLines: 1,
+                        readOnly: true,
+                        onTap: _isFetchingLocation ? null : _fetchLocationInWords,
+                        controller: _addressController,
+                        actionWidget: InkWell(
+                          onTap: _isFetchingLocation ? null : _fetchLocationInWords,
+                          borderRadius: BorderRadius.circular(8),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _isFetchingLocation
+                                    ? const SizedBox(
+                                        height: 12,
+                                        width: 12,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF10B981)),
+                                        ),
+                                      )
+                                    : const Icon(Icons.my_location, size: 14, color: Color(0xFF10B981)),
+                                const SizedBox(width: 4),
+                                Text(
+                                  _isFetchingLocation ? 'फ़ैच हो रहा है...' : 'लोकेशन फ़ैच करें',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF10B981),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                         validator: (val) {
                           if (val == null || val.trim().isEmpty) {
-                            return 'कृपया जिला दर्ज करें';
+                            return 'कृपया लोकेशन फ़ैच करें बटन पर क्लिक करके पता प्राप्त करें';
                           }
                           return null;
                         },
-                      ),
-                      const SizedBox(height: 16),
-                      _buildFormInput(
-                        label: 'गाँव (Village)',
-                        hint: 'गाँव का नाम',
-                        controller: _villageController,
                       ),
                       const SizedBox(height: 16),
                       _buildFormInput(
@@ -478,16 +626,29 @@ class _GauSevakRegistrationScreenState extends State<GauSevakRegistrationScreen>
     required String label,
     required String hint,
     required TextEditingController controller,
+    int maxLines = 1,
+    bool readOnly = false,
+    VoidCallback? onTap,
     TextInputType keyboardType = TextInputType.text,
+    Widget? actionWidget,
     String? Function(String?)? validator,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF475569))),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF475569))),
+            ?actionWidget,
+          ],
+        ),
         const SizedBox(height: 8),
         TextFormField(
           controller: controller,
+          maxLines: maxLines,
+          readOnly: readOnly,
+          onTap: onTap,
           keyboardType: keyboardType,
           validator: validator,
           decoration: InputDecoration(
