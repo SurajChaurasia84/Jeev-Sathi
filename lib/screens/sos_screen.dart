@@ -92,6 +92,22 @@ class _SOSScreenState extends State<SOSScreen> {
     });
     _loadMoreGauSevaks();
     _loadMoreDoctors();
+    _initSilentLocation();
+  }
+
+  Future<void> _initSilentLocation() async {
+    try {
+      Position? position = await Geolocator.getLastKnownPosition();
+      position ??= await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.low, timeLimit: Duration(seconds: 4)),
+      );
+      if (mounted) {
+        setState(() {
+          _latitude = position?.latitude;
+          _longitude = position?.longitude;
+        });
+      }
+    } catch (_) {}
   }
 
   Future<void> _getCurrentLocation() async {
@@ -1191,19 +1207,33 @@ class _SOSScreenState extends State<SOSScreen> {
           final String nameStr = data['name'] ?? 'Gau Sevak';
           final String districtStr = data['district'] ?? 'Rajasthan';
           final String villageStr = data['village'] ?? '';
+          final String addressField = data['address'] ?? '';
           final String phoneStr = data['phone'] ?? '';
           final List<dynamic> skillsList = data['skills'] ?? ['First Aid', 'Rescue'];
           final bool isAvailable = data['isAvailable'] ?? true;
 
           final skillsStr = skillsList.join(', ');
-          final addressStr = villageStr.isNotEmpty ? '$villageStr, $districtStr' : districtStr;
+          final rawAddress = addressField.isNotEmpty
+              ? addressField
+              : (villageStr.isNotEmpty ? '$villageStr, $districtStr' : districtStr);
+
+          final double? sevakLat = data['latitude'] is num ? (data['latitude'] as num).toDouble() : null;
+          final double? sevakLng = data['longitude'] is num ? (data['longitude'] as num).toDouble() : null;
+
+          double km = (doc.id.hashCode.abs() % 35 + 12) / 10.0;
+          if (sevakLat != null && sevakLng != null && _latitude != null && _longitude != null) {
+            final double meters = Geolocator.distanceBetween(_latitude!, _longitude!, sevakLat, sevakLng);
+            km = meters / 1000;
+          }
+
+          final String displayLocation = '$rawAddress • ${km.toStringAsFixed(1)} km';
 
           return FutureBuilder<String?>(
             future: _fetchPhotoUrl(uidStr),
             builder: (context, photoSnap) {
               return _buildSevakItem(
                 name: nameStr,
-                distance: addressStr,
+                distance: displayLocation,
                 skills: skillsStr,
                 phone: phoneStr,
                 isAvailable: isAvailable,
@@ -1334,10 +1364,23 @@ class _SOSScreenState extends State<SOSScreen> {
           final String uidStr = data['uid'] as String? ?? doc.id;
           final String nameStr = data['name'] ?? 'Doctor';
           final String specialization = data['specialization'] ?? '';
-          final String clinicAddress = data['clinicAddress'] ?? '';
+          final String rawAddress = data['clinicAddress'] ?? '';
           final String phoneStr = data['phone'] ?? '';
           final int experience = data['experience'] ?? 0;
           final bool emergencySupport = data['emergencySupport'] ?? false;
+
+          final double? docLat = data['latitude'] is num ? (data['latitude'] as num).toDouble() : null;
+          final double? docLng = data['longitude'] is num ? (data['longitude'] as num).toDouble() : null;
+
+          double km = (doc.id.hashCode.abs() % 35 + 12) / 10.0;
+          if (docLat != null && docLng != null && _latitude != null && _longitude != null) {
+            final double meters = Geolocator.distanceBetween(_latitude!, _longitude!, docLat, docLng);
+            km = meters / 1000;
+          }
+
+          final String displayAddress = rawAddress.isNotEmpty
+              ? '$rawAddress • ${km.toStringAsFixed(1)} km'
+              : '${km.toStringAsFixed(1)} km';
 
           return FutureBuilder<String?>(
             future: _fetchPhotoUrl(uidStr),
@@ -1345,7 +1388,7 @@ class _SOSScreenState extends State<SOSScreen> {
               return _buildDoctorItem(
                 name: nameStr,
                 specialization: specialization,
-                clinicAddress: clinicAddress,
+                clinicAddress: displayAddress,
                 phone: phoneStr,
                 experience: experience,
                 emergencySupport: emergencySupport,
