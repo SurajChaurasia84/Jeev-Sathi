@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'terms_conditions_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -15,6 +16,23 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
   bool _isLoading = false;
+  bool _isTermsAccepted = false;
+
+  Future<void> _openTermsAndConditions() async {
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TermsConditionsScreen(
+          initialAccepted: _isTermsAccepted,
+        ),
+      ),
+    );
+    if (result == true) {
+      setState(() {
+        _isTermsAccepted = true;
+      });
+    }
+  }
 
   final List<Map<String, String>> _slides = [
     {
@@ -360,13 +378,50 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   ),
                 ),
                 const SizedBox(height: 32),
-                      const SizedBox(height: 12),
-                      const Text(
-                        'आगे बढ़कर आप हमारे नियमों और शर्तों से सहमत होते हैं।',
-                        style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
-                        textAlign: TextAlign.center,
+                // Terms and conditions acceptance row
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                  child: Row(
+                    children: [
+                      Checkbox(
+                        value: _isTermsAccepted,
+                        activeColor: const Color(0xFF10B981),
+                        onChanged: (val) {
+                          if (val == true && !_isTermsAccepted) {
+                            _openTermsAndConditions();
+                          } else {
+                            setState(() {
+                              _isTermsAccepted = val ?? false;
+                            });
+                          }
+                        },
                       ),
-                      const SizedBox(height: 12),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: _openTermsAndConditions,
+                          child: RichText(
+                            text: TextSpan(
+                              style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                              children: [
+                                const TextSpan(text: 'आगे बढ़कर आप हमारे '),
+                                TextSpan(
+                                  text: 'नियमों और शर्तों (T&C)',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF10B981),
+                                    decoration: TextDecoration.underline,
+                                  ),
+                                ),
+                                const TextSpan(text: ' से सहमत होते हैं।'),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
 
                 // Google Sign In Block
                 Padding(
@@ -382,11 +437,24 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         )
                       else ...[
                         ElevatedButton(
-                          onPressed: _signInWithGoogle,
+                          onPressed: _isTermsAccepted
+                              ? _signInWithGoogle
+                              : () {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('कृपया लॉगिन करने से पहले नियमों और शर्तों को पढ़ें और स्वीकार करें।'),
+                                      duration: Duration(seconds: 2),
+                                      backgroundColor: Color(0xFFE11D48),
+                                    ),
+                                  );
+                                  _openTermsAndConditions();
+                                },
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF0F172A), // Premium Dark Slate
+                            backgroundColor: _isTermsAccepted
+                                ? const Color(0xFF0F172A) // Premium Dark Slate when active
+                                : const Color(0xFF94A3B8), // Slate 400 when disabled
                             foregroundColor: Colors.white,
-                            elevation: 4,
+                            elevation: _isTermsAccepted ? 4 : 0,
                             shadowColor: Colors.black.withValues(alpha: 0.15),
                             minimumSize: const Size(double.infinity, 56),
                             shape: RoundedRectangleBorder(
@@ -414,9 +482,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                 ),
                               ),
                               const SizedBox(width: 14),
-                              const Text(
-                                'Google के साथ लॉगिन करें',
-                                style: TextStyle(
+                              Text(
+                                _isTermsAccepted ? 'Google के साथ लॉगिन करें' : 'शर्तें स्वीकार करके लॉगिन करें',
+                                style: const TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
                                   letterSpacing: 0.5,
