@@ -360,6 +360,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   ),
                 ),
                 const SizedBox(height: 32),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'आगे बढ़कर आप हमारे नियमों और शर्तों से सहमत होते हैं।',
+                        style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 12),
 
                 // Google Sign In Block
                 Padding(
@@ -418,7 +425,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             ],
                           ),
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 3),
                         TextButton.icon(
                           onPressed: _signInAnonymously,
                           style: TextButton.styleFrom(
@@ -437,14 +444,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             ),
                           ),
                         ),
+                        
+                        const SizedBox(height: 10),
                       ],
-                      const SizedBox(height: 12),
-                      const Text(
-                        'आगे बढ़कर आप हमारे नियमों और शर्तों से सहमत होते हैं।',
-                        style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 24),
                     ],
                   ),
                 ),
