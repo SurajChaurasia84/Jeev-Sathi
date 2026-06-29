@@ -712,7 +712,7 @@ class _SOSScreenState extends State<SOSScreen> {
                 ),
                 subtitle: Text(
                   _latitude != null
-                      ? 'स्थान सफलतापूर्वक जोड़ा गया (GPS Coordinates Attached)'
+                      ? 'स्थान सफलतापूर्वक जोड़ा गया (GPS Attached)'
                       : 'सटीक रेस्क्यू के लिए आवश्यक',
                   style: const TextStyle(fontSize: 11),
                 ),
