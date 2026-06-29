@@ -132,35 +132,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         await saveToken(newToken);
       });
 
-      // Handle foreground messages while app is open
+      // Log foreground messages (system handles push notification banners natively across all states)
       FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-        final notification = message.notification;
-        if (notification != null && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Row(
-                children: [
-                  const Icon(Icons.notifications_active, color: Colors.white),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(notification.title ?? 'नोफिकेशन', style: const TextStyle(fontWeight: FontWeight.bold)),
-                        if (notification.body != null)
-                          Text(notification.body!, style: const TextStyle(fontSize: 12)),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              backgroundColor: const Color(0xFF10B981),
-              duration: const Duration(seconds: 4),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
+        debugPrint('Foreground push message received: ${message.notification?.title}');
       });
     } catch (e) {
       debugPrint('FCM token init error: $e');
