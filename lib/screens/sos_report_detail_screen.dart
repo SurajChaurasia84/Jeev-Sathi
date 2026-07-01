@@ -6,6 +6,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import '../services/cloudinary_service.dart';
+import '../services/notification_service.dart';
+import '../widgets/safe_avatar.dart';
+import '../widgets/banner_ad_widget.dart';
 
 class SOSReportDetailScreen extends StatefulWidget {
   final Map<String, dynamic> data;
@@ -19,10 +22,29 @@ class SOSReportDetailScreen extends StatefulWidget {
 class _SOSReportDetailScreenState extends State<SOSReportDetailScreen> {
   String _placeName = 'स्थान की जानकारी लोड हो रही है...';
   String? _distanceStr;
+  late String _currentStatus;
+  int _myReportSubTab = 0; // 0 = Accepted list, 1 = Resolved list for reporter's own post
+
+  final Map<String, String?> _photoUrlCache = {};
+
+  Future<String?> _fetchPhotoUrl(String uid) async {
+    if (uid.isEmpty) return null;
+    if (_photoUrlCache.containsKey(uid)) return _photoUrlCache[uid];
+    try {
+      final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      final url = (doc.data())?['photoUrl'] as String?;
+      _photoUrlCache[uid] = url;
+      return url;
+    } catch (_) {
+      _photoUrlCache[uid] = null;
+      return null;
+    }
+  }
 
   @override
   void initState() {
     super.initState();
+    _currentStatus = widget.data['status'] ?? 'In Progress (सक्रिय)';
     _loadLocationDetails();
   }
 
@@ -111,6 +133,141 @@ class _SOSReportDetailScreenState extends State<SOSReportDetailScreen> {
     }
   }
 
+  Future<void> _acceptCase(String docId, String animal, String reporterId, String? reporterToken) async {
+    final user = FirebaseAuth.instance.currentUser;
+    final sevakName = user?.displayName ?? 'सहायक';
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(
+          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF10B981)),
+        ),
+      ),
+    );
+
+    try {
+      await FirebaseFirestore.instance.collection('sos_reports').doc(docId).update({
+        'status': 'Accepted (स्वीकृत)',
+        'acceptedBy': user?.uid,
+        'acceptedByName': sevakName,
+        'acceptedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (reporterId.isNotEmpty && reporterId != 'anonymous') {
+        NotificationService.notifySOSAccepted(
+          reporterUid: reporterId,
+          animal: animal,
+          reportId: docId.length >= 6 ? docId.substring(0, 6).toUpperCase() : docId,
+          sevakName: sevakName,
+          targetToken: reporterToken,
+        );
+      }
+
+      if (mounted) {
+        Navigator.pop(context); // dismiss loader
+        setState(() {
+          _currentStatus = 'Accepted (स्वीकृत)';
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$animal केस स्वीकार किया गया! रिपोर्टर को सूचित किया गया। ✅'),
+            backgroundColor: const Color(0xFF10B981),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // dismiss loader
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('त्रुटि: ${e.toString()}'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Future<void> _resolveCase(String docId, String animal, String reporterId, String? reporterToken) async {
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.check_circle_outline, color: Color(0xFF10B981)),
+            SizedBox(width: 8),
+            Text('केस सुलझाएं?', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          ],
+        ),
+        content: const Text(
+          'क्या आप इस SOS रिपोर्ट को सुलझाया हुआ (Resolved) मार्क करना चाहते हैं?',
+          style: TextStyle(fontSize: 13, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('रद्द करें', style: TextStyle(color: Color(0xFF64748B))),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(
+              'सुलझ गया (Resolve)',
+              style: TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || !mounted) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(
+          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF10B981)),
+        ),
+      ),
+    );
+
+    try {
+      await FirebaseFirestore.instance.collection('sos_reports').doc(docId).update({
+        'status': 'Resolved (सुलझाया)',
+        'resolvedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (reporterId.isNotEmpty && reporterId != 'anonymous') {
+        NotificationService.notifySOSResolved(
+          reporterUid: reporterId,
+          animal: animal,
+          reportId: docId.length >= 6 ? docId.substring(0, 6).toUpperCase() : docId,
+          targetToken: reporterToken,
+        );
+      }
+
+      if (mounted) {
+        Navigator.pop(context); // dismiss loader
+        setState(() {
+          _currentStatus = 'Resolved (सुलझाया)';
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('केस को सफलतापूर्वक सुलझाया हुआ मार्क किया गया। 🎉'),
+            backgroundColor: Color(0xFF10B981),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // dismiss loader
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('त्रुटि: ${e.toString()}'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final String animal = widget.data['animal'] ?? 'Cow';
@@ -118,7 +275,7 @@ class _SOSReportDetailScreenState extends State<SOSReportDetailScreen> {
     final String descRaw = widget.data['description'] ?? '';
     final String desc = descRaw.trim().isEmpty ? 'कोई विवरण उपलब्ध नहीं है।' : descRaw;
     final String? imageUrl = widget.data['imageUrl'];
-    final String status = widget.data['status'] ?? 'In Progress (सक्रिय)';
+    final String status = _currentStatus;
     final String creator = widget.data['reporterName'] ?? 'Anonymous';
     final double? lat = widget.data['latitude'] is num ? (widget.data['latitude'] as num).toDouble() : null;
     final double? lng = widget.data['longitude'] is num ? (widget.data['longitude'] as num).toDouble() : null;
@@ -127,6 +284,21 @@ class _SOSReportDetailScreenState extends State<SOSReportDetailScreen> {
     final String? reporterPhone = widget.data['reporterPhone'];
     final currentUser = FirebaseAuth.instance.currentUser;
     final bool isMyReport = currentUser != null && currentUser.uid == reporterId;
+
+    final String? acceptedByName = widget.data['acceptedByName'] as String?;
+    final String? acceptedByUid = widget.data['acceptedBy'] as String?;
+    String? acceptedAtStr;
+    if (widget.data['acceptedAt'] != null && widget.data['acceptedAt'] is Timestamp) {
+      final Timestamp ts = widget.data['acceptedAt'] as Timestamp;
+      final DateTime dt = ts.toDate();
+      acceptedAtStr = '${dt.day}/${dt.month}/${dt.year} ${dt.hour}:${dt.minute.toString().padLeft(2, '0')}';
+    }
+    String? resolvedAtStr;
+    if (widget.data['resolvedAt'] != null && widget.data['resolvedAt'] is Timestamp) {
+      final Timestamp ts = widget.data['resolvedAt'] as Timestamp;
+      final DateTime dt = ts.toDate();
+      resolvedAtStr = '${dt.day}/${dt.month}/${dt.year} ${dt.hour}:${dt.minute.toString().padLeft(2, '0')}';
+    }
 
     // Format timestamp if available
     String dateStr = 'हाल ही में';
@@ -145,12 +317,15 @@ class _SOSReportDetailScreenState extends State<SOSReportDetailScreen> {
 
     // Status Styling
     Color statusColor = Colors.orange.shade700;
-    if (status.contains('Resolved') || status.contains('सुलझाया')) {
+    if (status.contains('Accepted') || status.contains('स्वीकृत')) {
+      statusColor = Colors.blue.shade700;
+    } else if (status.contains('Resolved') || status.contains('सुलझाया')) {
       statusColor = const Color(0xFF10B981); // Green
     }
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
+      bottomNavigationBar: const BannerAdWidget(),
       appBar: AppBar(
         title: Text(
           'विवरण: #SOS-$id',
@@ -446,6 +621,385 @@ class _SOSReportDetailScreenState extends State<SOSReportDetailScreen> {
                       ],
                     ),
                   ),
+                  const SizedBox(height: 20),
+
+                  // 6. Action Section / Case Activity Section
+                  if (isMyReport) ...[
+                    const Text(
+                      '📋 केस सहायता स्थिति (Case Activity)',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Subtabs Toggle (Accepted / Resolved)
+                          Row(
+                            children: [
+                              Expanded(
+                                child: InkWell(
+                                  onTap: () => setState(() => _myReportSubTab = 0),
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(vertical: 10),
+                                    decoration: BoxDecoration(
+                                      color: _myReportSubTab == 0 ? Colors.blue.withValues(alpha: 0.1) : Colors.grey.shade100,
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(
+                                        color: _myReportSubTab == 0 ? Colors.blue : Colors.transparent,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.handshake_outlined,
+                                          size: 16,
+                                          color: _myReportSubTab == 0 ? Colors.blue.shade700 : Colors.grey.shade600,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          'स्वीकृत (Accepted)',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.bold,
+                                            color: _myReportSubTab == 0 ? Colors.blue.shade700 : Colors.grey.shade600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: InkWell(
+                                  onTap: () => setState(() => _myReportSubTab = 1),
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(vertical: 10),
+                                    decoration: BoxDecoration(
+                                      color: _myReportSubTab == 1 ? const Color(0xFF10B981).withValues(alpha: 0.1) : Colors.grey.shade100,
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(
+                                        color: _myReportSubTab == 1 ? const Color(0xFF10B981) : Colors.transparent,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.check_circle_outline,
+                                          size: 16,
+                                          color: _myReportSubTab == 1 ? const Color(0xFF10B981) : Colors.grey.shade600,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          'सुलझाया (Resolved)',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.bold,
+                                            color: _myReportSubTab == 1 ? const Color(0xFF10B981) : Colors.grey.shade600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Subtab 0 Content: Accepted Details
+                          if (_myReportSubTab == 0) ...[
+                            if (status.contains('Accepted') || status.contains('स्वीकृत') || status.contains('Resolved') || status.contains('सुलझाया') || (acceptedByName != null && acceptedByName.isNotEmpty)) ...[
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.shade50.withValues(alpha: 0.5),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: Colors.blue.shade100),
+                                ),
+                                child: Row(
+                                  children: [
+                                     FutureBuilder<String?>(
+                                       future: (acceptedByUid != null && acceptedByUid.isNotEmpty)
+                                           ? _fetchPhotoUrl(acceptedByUid)
+                                           : Future.value(null),
+                                       builder: (context, photoSnap) {
+                                         return SafeNetworkAvatar(
+                                           radius: 20,
+                                           backgroundColor: Colors.blue.shade100,
+                                           photoUrl: photoSnap.data,
+                                           fallbackChild: const Text('🤝', style: TextStyle(fontSize: 18)),
+                                         );
+                                       },
+                                     ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            acceptedByName != null && acceptedByName.isNotEmpty ? acceptedByName : 'गौ सेवक / सहायक',
+                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF0F172A)),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            acceptedAtStr != null ? 'स्वीकृत समय: $acceptedAtStr' : 'केस सहायता के लिए स्वीकार किया गया है',
+                                            style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: Colors.blue,
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: const Text(
+                                        'Accepted',
+                                        style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ] else ...[
+                              Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 16.0),
+                                child: Center(
+                                  child: Column(
+                                    children: const [
+                                      Icon(Icons.hourglass_empty_rounded, size: 36, color: Color(0xFF94A3B8)),
+                                      SizedBox(height: 8),
+                                      Text(
+                                        'अभी तक किसी सहायक ने यह केस स्वीकार नहीं किया है।',
+                                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                      SizedBox(height: 4),
+                                      Text(
+                                        'जैसे ही कोई गौ सेवक सहायता स्वीकार करेगा, यहाँ विवरण आ जाएगा।',
+                                        style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+
+                          // Subtab 1 Content: Resolved Details
+                          if (_myReportSubTab == 1) ...[
+                            if (status.contains('Resolved') || status.contains('सुलझाया') || resolvedAtStr != null) ...[
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF10B981).withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+                                ),
+                                child: Row(
+                                  children: [
+                                     FutureBuilder<String?>(
+                                       future: (acceptedByUid != null && acceptedByUid.isNotEmpty)
+                                           ? _fetchPhotoUrl(acceptedByUid)
+                                           : Future.value(null),
+                                       builder: (context, photoSnap) {
+                                         return SafeNetworkAvatar(
+                                           radius: 20,
+                                           backgroundColor: const Color(0xFF10B981).withValues(alpha: 0.2),
+                                           photoUrl: photoSnap.data,
+                                           fallbackChild: const Text('🎉', style: TextStyle(fontSize: 18)),
+                                         );
+                                       },
+                                     ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const Text(
+                                            'SOS रेस्क्यू पूर्ण',
+                                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF0F172A)),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            resolvedAtStr != null ? 'सुलझाने का समय: $resolvedAtStr' : 'केस सफलता पूर्वक सुलझा लिया गया है',
+                                            style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF10B981),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: const Text(
+                                        'Resolved',
+                                        style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ] else ...[
+                              Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 16.0),
+                                child: Center(
+                                  child: Column(
+                                    children: const [
+                                      Icon(Icons.pending_actions_rounded, size: 36, color: Color(0xFF94A3B8)),
+                                      SizedBox(height: 8),
+                                      Text(
+                                        'यह केस अभी तक सुलझाया नहीं गया है।',
+                                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                      SizedBox(height: 4),
+                                      Text(
+                                        'रेस्क्यू पूरा होने पर यहाँ स्थिति अपडेट हो जाएगी।',
+                                        style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ],
+                      ),
+                    ),
+                  ] else ...[
+                    // Helper Action Section (for other users' posts)
+                    const Text(
+                      '⚡ केस पर कार्रवाई (Case Actions)',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                      ),
+                      child: Column(
+                        children: [
+                          if (status.contains('Resolved') || status.contains('सुलझाया')) ...[
+                            Row(
+                              children: const [
+                                Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 24),
+                                SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    'यह SOS रेस्क्यू रिपोर्ट सफलतापूर्वक सुलझाई जा चुकी है। 🎉',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF10B981),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ] else if (status.contains('Accepted') || status.contains('स्वीकृत')) ...[
+                            Row(
+                              children: const [
+                                Icon(Icons.volunteer_activism, color: Colors.blue, size: 24),
+                                SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    'यह केस किसी सहायक द्वारा स्वीकार किया गया है और प्रगति पर है।',
+                                    style: TextStyle(fontSize: 12, color: Color(0xFF475569)),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 14),
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
+                                onPressed: docId == null ? null : () => _resolveCase(docId, animal, reporterId, widget.data['reporterToken']),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF10B981),
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  elevation: 0,
+                                ),
+                                icon: const Icon(Icons.check_circle_outline, size: 20),
+                                label: const Text(
+                                  'केस को सुलझाया हुआ (Resolved) मार्क करें',
+                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                ),
+                              ),
+                            ),
+                          ] else ...[
+                            const Text(
+                              'यदि आप पशु की सहायता के लिए जा रहे हैं, तो नीचे दिए बटन पर टैप करके केस स्वीकार करें ताकि रिपोर्टर को आपकी सहायता की सूचना मिल सके।',
+                              style: TextStyle(fontSize: 12, color: Color(0xFF64748B), height: 1.4),
+                            ),
+                            const SizedBox(height: 14),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    onPressed: docId == null ? null : () => _acceptCase(docId, animal, reporterId, widget.data['reporterToken']),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFF3B82F6),
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                      elevation: 0,
+                                    ),
+                                    icon: const Icon(Icons.handshake_outlined, size: 20),
+                                    label: const Text(
+                                      'केस स्वीकार करें (Accept SOS)',
+                                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: docId == null ? null : () => _resolveCase(docId, animal, reporterId, widget.data['reporterToken']),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: const Color(0xFF10B981),
+                                      side: const BorderSide(color: Color(0xFF10B981), width: 1.5),
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    ),
+                                    icon: const Icon(Icons.check_circle_outline, size: 18),
+                                    label: const Text(
+                                      'सुलझाया मार्क करें',
+                                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 30),
                 ],
               ),
