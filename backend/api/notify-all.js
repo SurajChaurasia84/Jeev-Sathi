@@ -28,7 +28,7 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const { reporterId, title, body, data = {} } = req.body ?? {};
+  const { reporterId, title, body, latitude, longitude, data = {} } = req.body ?? {};
 
   if (!title || !body) {
     return res.status(400).json({ error: 'title and body are required' });
@@ -46,6 +46,24 @@ export default async function handler(req, res) {
         const token = userData.fcmToken;
         if (!token || token.trim() === '') return;
         if (reporterId && doc.id === reporterId) return;
+
+        // Apply 5 km radius filtering if coordinates are provided
+        if (latitude !== undefined && longitude !== undefined && latitude !== null && longitude !== null) {
+          const userLat = userData.latitude;
+          const userLng = userData.longitude;
+          if (userLat === undefined || userLng === undefined || userLat === null || userLng === null) {
+            // Skip user since we don't know their location
+            return;
+          }
+          const dist = getDistanceInKm(
+            Number(latitude),
+            Number(longitude),
+            Number(userLat),
+            Number(userLng)
+          );
+          if (dist > 5.0) return; // Skip if distance > 5 km
+        }
+
         tokens.push(token);
       });
     } catch (dbErr) {
@@ -130,4 +148,16 @@ export default async function handler(req, res) {
     console.error('notify-all error:', err);
     return res.status(500).json({ success: false, error: err.message });
   }
+}
+
+function getDistanceInKm(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Radius of the earth in km
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c; // Distance in km
 }
