@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../widgets/banner_ad_widget.dart';
 
 class DonationScreen extends StatelessWidget {
   const DonationScreen({super.key});
@@ -76,6 +77,7 @@ class DonationScreen extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC), // Slate 50
+      bottomNavigationBar: const BannerAdWidget(),
       appBar: AppBar(
         title: const Text(
           'दान एवं सहयोग (Donate)',
