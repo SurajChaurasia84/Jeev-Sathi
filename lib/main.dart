@@ -4,15 +4,19 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'screens/auth_gate.dart';
 import 'screens/home_screen.dart';
 import 'screens/sos_screen.dart';
 import 'screens/profile_screen.dart';
 import 'services/env_loader.dart';
+import 'widgets/banner_ad_widget.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+  await MobileAds.instance.initialize();
   await EnvLoader.load();
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
@@ -102,34 +106,62 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       // Subscribe to sos_alerts topic
       await messaging.subscribeToTopic('sos_alerts');
 
-      // Helper function to save token to current user's doc
-      Future<void> saveToken(String token) async {
+      // Helper function to save token and location to current user's doc
+      Future<void> syncTokenAndLocation(String? token) async {
         final user = FirebaseAuth.instance.currentUser;
         if (user == null) return;
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .set({'fcmToken': token}, SetOptions(merge: true));
-        debugPrint('FCM token synced for uid ${user.uid}');
+
+        final Map<String, dynamic> data = {};
+        if (token != null && token.isNotEmpty) {
+          data['fcmToken'] = token;
+        }
+
+        try {
+          final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+          if (serviceEnabled) {
+            final permission = await Geolocator.checkPermission();
+            if (permission == LocationPermission.always || permission == LocationPermission.whileInUse) {
+              final position = await Geolocator.getLastKnownPosition() ??
+                  await Geolocator.getCurrentPosition(
+                    locationSettings: const LocationSettings(
+                      accuracy: LocationAccuracy.low,
+                      timeLimit: Duration(seconds: 4),
+                    ),
+                  );
+              data['latitude'] = position.latitude;
+              data['longitude'] = position.longitude;
+            }
+          }
+        } catch (e) {
+          debugPrint('Silent location fetch for user sync failed: $e');
+        }
+
+        if (data.isNotEmpty) {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .set(data, SetOptions(merge: true));
+          debugPrint('FCM token/location synced for uid ${user.uid}: $data');
+        }
       }
 
       // Initial token fetch and save
       final token = await messaging.getToken();
       if (token != null) {
-        await saveToken(token);
+        await syncTokenAndLocation(token);
       }
 
       // Sync token whenever user logs in or auth state changes
       FirebaseAuth.instance.authStateChanges().listen((user) async {
         if (user != null) {
           final t = await messaging.getToken();
-          if (t != null) await saveToken(t);
+          if (t != null) await syncTokenAndLocation(t);
         }
       });
 
       // Sync on token refresh
       messaging.onTokenRefresh.listen((newToken) async {
-        await saveToken(newToken);
+        await syncTokenAndLocation(newToken);
       });
 
       // Log foreground messages (system handles push notification banners natively across all states)
@@ -152,9 +184,16 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         });
       },
       child: Scaffold(
-        body: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 300),
-          child: _screens[_currentIndex],
+        body: Column(
+          children: [
+            Expanded(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                child: _screens[_currentIndex],
+              ),
+            ),
+            const BannerAdWidget(),
+          ],
         ),
         bottomNavigationBar: Container(
           decoration: BoxDecoration(
