@@ -62,6 +62,9 @@ class _SOSScreenState extends State<SOSScreen> {
   bool _hasMoreSevaks = true;
   DocumentSnapshot? _lastSevakDocument;
   late final ScrollController _sevakScrollController;
+  final TextEditingController _sevakSearchController = TextEditingController();
+  final FocusNode _sevakSearchFocusNode = FocusNode();
+  String _sevakSearchQuery = '';
 
   // Doctor tab state
   final List<DocumentSnapshot> _doctors = [];
@@ -69,6 +72,9 @@ class _SOSScreenState extends State<SOSScreen> {
   bool _hasMoreDoctors = true;
   DocumentSnapshot? _lastDoctorDocument;
   late final ScrollController _doctorScrollController;
+  final TextEditingController _doctorSearchController = TextEditingController();
+  final FocusNode _doctorSearchFocusNode = FocusNode();
+  String _doctorSearchQuery = '';
 
   // Profile photo cache: uid -> photoUrl
   final Map<String, String?> _photoUrlCache = {};
@@ -76,6 +82,8 @@ class _SOSScreenState extends State<SOSScreen> {
   @override
   void initState() {
     super.initState();
+    _sevakSearchFocusNode.addListener(() { if (mounted) setState(() {}); });
+    _doctorSearchFocusNode.addListener(() { if (mounted) setState(() {}); });
     _sevakScrollController = ScrollController();
     _sevakScrollController.addListener(() {
       if (_sevakScrollController.position.pixels >=
@@ -106,6 +114,14 @@ class _SOSScreenState extends State<SOSScreen> {
           _latitude = position?.latitude;
           _longitude = position?.longitude;
         });
+
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null && _latitude != null && _longitude != null) {
+          FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+            'latitude': _latitude,
+            'longitude': _longitude,
+          }, SetOptions(merge: true)).catchError((_) {});
+        }
       }
     } catch (_) {}
   }
@@ -121,7 +137,7 @@ class _SOSScreenState extends State<SOSScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('कृपया अपने फोन की GPS/लोकेशन सेवा चालू करें।'),
+              content: Text('कृपया अपने फोन की GPS/लोकेशन सेवा चालू करें。'),
               backgroundColor: Colors.orange,
             ),
           );
@@ -139,7 +155,7 @@ class _SOSScreenState extends State<SOSScreen> {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('स्थान अनुमति (Location permission) अस्वीकार कर दी गई।'),
+                content: Text('स्थान अनुमति (Location permission) अस्वीकार कर दी गई。'),
                 backgroundColor: Colors.red,
               ),
             );
@@ -155,7 +171,7 @@ class _SOSScreenState extends State<SOSScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('स्थान अनुमति हमेशा के लिए अस्वीकार कर दी गई है। कृपया सेटिंग से अनुमति दें।'),
+              content: Text('स्थान अनुमति हमेशा के लिए अस्वीकार कर दी गई है। कृपया सेटिंग से अनुमति दें。'),
               backgroundColor: Colors.red,
             ),
           );
@@ -179,6 +195,14 @@ class _SOSScreenState extends State<SOSScreen> {
         _isAddingLocation = false;
       });
 
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'latitude': _latitude,
+          'longitude': _longitude,
+        }, SetOptions(merge: true)).catchError((_) {});
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -196,6 +220,15 @@ class _SOSScreenState extends State<SOSScreen> {
             _longitude = lastPosition.longitude;
             _isAddingLocation = false;
           });
+
+          final user = FirebaseAuth.instance.currentUser;
+          if (user != null) {
+            FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+              'latitude': _latitude,
+              'longitude': _longitude,
+            }, SetOptions(merge: true)).catchError((_) {});
+          }
+
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -214,7 +247,7 @@ class _SOSScreenState extends State<SOSScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('स्थान प्राप्त करने में विफल: ${e.toString()}'),
+            content: Text('स्थान प्राप्त करने में त्रुटि: ${e.toString()}'),
             backgroundColor: Colors.red,
           ),
         );
@@ -317,7 +350,11 @@ class _SOSScreenState extends State<SOSScreen> {
   @override
   void dispose() {
     _sevakScrollController.dispose();
+    _sevakSearchController.dispose();
+    _sevakSearchFocusNode.dispose();
     _doctorScrollController.dispose();
+    _doctorSearchController.dispose();
+    _doctorSearchFocusNode.dispose();
     _descriptionController.dispose();
     _reporterPhoneController.dispose();
     super.dispose();
@@ -395,6 +432,8 @@ class _SOSScreenState extends State<SOSScreen> {
         animal: _selectedAnimal,
         description: _descriptionController.text.trim(),
         reportId: newReportDoc.id.substring(0, 6).toUpperCase(),
+        latitude: _latitude!,
+        longitude: _longitude!,
       );
 
       _descriptionController.clear();
@@ -1144,6 +1183,65 @@ class _SOSScreenState extends State<SOSScreen> {
   }
 
 
+  Widget _buildSearchBar({
+    required TextEditingController controller,
+    required FocusNode focusNode,
+    required String query,
+    required String hintText,
+    required Color activeColor,
+    required ValueChanged<String> onChanged,
+    required VoidCallback onClearAndUnfocus,
+  }) {
+    final bool isFocused = focusNode.hasFocus;
+    final bool hasText = query.trim().isNotEmpty;
+    final bool showActionIcon = isFocused || hasText;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+          border: Border.all(
+            color: isFocused ? activeColor : const Color(0xFFE2E8F0),
+            width: isFocused ? 1.5 : 1,
+          ),
+        ),
+        child: TextField(
+          controller: controller,
+          focusNode: focusNode,
+          onChanged: onChanged,
+          style: const TextStyle(fontSize: 14, color: Color(0xFF0F172A)),
+          decoration: InputDecoration(
+            hintText: hintText,
+            hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+            prefixIcon: Icon(Icons.search, color: isFocused ? activeColor : const Color(0xFF94A3B8), size: 20),
+            suffixIcon: showActionIcon
+                ? IconButton(
+                    icon: Icon(
+                      hasText ? Icons.close : Icons.keyboard_hide,
+                      color: const Color(0xFF64748B),
+                      size: 20,
+                    ),
+                    onPressed: onClearAndUnfocus,
+                    tooltip: 'Clear Search',
+                  )
+                : null,
+            border: InputBorder.none,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          ),
+        ),
+      ),
+    );
+  }
+
   // Sub Tab 3: SEVAK ROSTER DIRECTORY (Firestore Paginated List)
   Widget _buildSevakTab() {
     if (_gauSevaks.isEmpty && _isLoadingSevaks) {
@@ -1154,95 +1252,148 @@ class _SOSScreenState extends State<SOSScreen> {
       );
     }
 
-    if (_gauSevaks.isEmpty && !_isLoadingSevaks) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text('🤝', style: TextStyle(fontSize: 48)),
-              const SizedBox(height: 16),
-              const Text(
-                'कोई पंजीकृत गौ सेवक उपलब्ध नहीं है।',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'सेवा से जुड़ने के लिए प्रोफाइल में पंजीकरण करें!',
-                style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
+    final filteredSevaks = _gauSevaks.where((doc) {
+      if (_sevakSearchQuery.trim().isEmpty) return true;
+      final data = doc.data() as Map<String, dynamic>;
+      final String nameStr = (data['name'] ?? '').toString().toLowerCase();
+      final String districtStr = (data['district'] ?? '').toString().toLowerCase();
+      final String villageStr = (data['village'] ?? '').toString().toLowerCase();
+      final String addressField = (data['address'] ?? '').toString().toLowerCase();
+      final String q = _sevakSearchQuery.trim().toLowerCase();
+      return nameStr.contains(q) || addressField.contains(q) || villageStr.contains(q) || districtStr.contains(q);
+    }).toList();
+
+    return Column(
+      children: [
+        _buildSearchBar(
+          controller: _sevakSearchController,
+          focusNode: _sevakSearchFocusNode,
+          query: _sevakSearchQuery,
+          hintText: 'गौ सेवक का नाम या स्थान खोजें...',
+          activeColor: const Color(0xFFEF4444),
+          onChanged: (val) {
+            setState(() {
+              _sevakSearchQuery = val;
+            });
+          },
+          onClearAndUnfocus: () {
+            _sevakSearchController.clear();
+            setState(() {
+              _sevakSearchQuery = '';
+            });
+            _sevakSearchFocusNode.unfocus();
+            FocusScope.of(context).unfocus();
+          },
         ),
-      );
-    }
+        Expanded(
+          child: _gauSevaks.isEmpty && !_isLoadingSevaks
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Text('🤝', style: TextStyle(fontSize: 48)),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'कोई पंजीकृत गौ सेवक उपलब्ध नहीं है।',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'सेवा से जुड़ने के लिए प्रोफाइल में पंजीकरण करें!',
+                          style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : filteredSevaks.isEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24.0),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.search_off_rounded, size: 48, color: Color(0xFF94A3B8)),
+                            const SizedBox(height: 12),
+                            Text(
+                              '"$_sevakSearchQuery" के लिए कोई गौ सेवक नहीं मिला।',
+                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : RefreshIndicator(
+                      onRefresh: _refreshGauSevaks,
+                      color: const Color(0xFFEF4444),
+                      child: ListView.builder(
+                        controller: _sevakScrollController,
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                        itemCount: filteredSevaks.length + (_hasMoreSevaks && _sevakSearchQuery.trim().isEmpty ? 1 : 0),
+                        itemBuilder: (context, index) {
+                          if (index == filteredSevaks.length) {
+                            return const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 16.0),
+                              child: Center(
+                                child: CircularProgressIndicator(
+                                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFEF4444)),
+                                ),
+                              ),
+                            );
+                          }
 
-    return RefreshIndicator(
-      onRefresh: _refreshGauSevaks,
-      color: const Color(0xFFEF4444),
-      child: ListView.builder(
-        controller: _sevakScrollController,
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16),
-        itemCount: _gauSevaks.length + (_hasMoreSevaks ? 1 : 0),
-        itemBuilder: (context, index) {
-          if (index == _gauSevaks.length) {
-            return const Padding(
-              padding: EdgeInsets.symmetric(vertical: 16.0),
-              child: Center(
-                child: CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFEF4444)),
-                ),
-              ),
-            );
-          }
+                          final doc = filteredSevaks[index];
+                          final data = doc.data() as Map<String, dynamic>;
 
-          final doc = _gauSevaks[index];
-          final data = doc.data() as Map<String, dynamic>;
+                          final String uidStr = data['uid'] as String? ?? doc.id;
+                          final String nameStr = data['name'] ?? 'Gau Sevak';
+                          final String districtStr = data['district'] ?? 'Rajasthan';
+                          final String villageStr = data['village'] ?? '';
+                          final String addressField = data['address'] ?? '';
+                          final String phoneStr = data['phone'] ?? '';
+                          final List<dynamic> skillsList = data['skills'] ?? ['First Aid', 'Rescue'];
+                          final bool isAvailable = data['isAvailable'] ?? true;
 
-          final String uidStr = data['uid'] as String? ?? doc.id;
-          final String nameStr = data['name'] ?? 'Gau Sevak';
-          final String districtStr = data['district'] ?? 'Rajasthan';
-          final String villageStr = data['village'] ?? '';
-          final String addressField = data['address'] ?? '';
-          final String phoneStr = data['phone'] ?? '';
-          final List<dynamic> skillsList = data['skills'] ?? ['First Aid', 'Rescue'];
-          final bool isAvailable = data['isAvailable'] ?? true;
+                          final skillsStr = skillsList.join(', ');
+                          final rawAddress = addressField.isNotEmpty
+                              ? addressField
+                              : (villageStr.isNotEmpty ? '$villageStr, $districtStr' : districtStr);
 
-          final skillsStr = skillsList.join(', ');
-          final rawAddress = addressField.isNotEmpty
-              ? addressField
-              : (villageStr.isNotEmpty ? '$villageStr, $districtStr' : districtStr);
+                          final double? sevakLat = data['latitude'] is num ? (data['latitude'] as num).toDouble() : null;
+                          final double? sevakLng = data['longitude'] is num ? (data['longitude'] as num).toDouble() : null;
 
-          final double? sevakLat = data['latitude'] is num ? (data['latitude'] as num).toDouble() : null;
-          final double? sevakLng = data['longitude'] is num ? (data['longitude'] as num).toDouble() : null;
+                          double km = (doc.id.hashCode.abs() % 35 + 12) / 10.0;
+                          if (sevakLat != null && sevakLng != null && _latitude != null && _longitude != null) {
+                            final double meters = Geolocator.distanceBetween(_latitude!, _longitude!, sevakLat, sevakLng);
+                            km = meters / 1000;
+                          }
 
-          double km = (doc.id.hashCode.abs() % 35 + 12) / 10.0;
-          if (sevakLat != null && sevakLng != null && _latitude != null && _longitude != null) {
-            final double meters = Geolocator.distanceBetween(_latitude!, _longitude!, sevakLat, sevakLng);
-            km = meters / 1000;
-          }
+                          final String displayLocation = '$rawAddress • ${km.toStringAsFixed(1)} km';
 
-          final String displayLocation = '$rawAddress • ${km.toStringAsFixed(1)} km';
-
-          return FutureBuilder<String?>(
-            future: _fetchPhotoUrl(uidStr),
-            builder: (context, photoSnap) {
-              return _buildSevakItem(
-                name: nameStr,
-                distance: displayLocation,
-                skills: skillsStr,
-                phone: phoneStr,
-                isAvailable: isAvailable,
-                photoUrl: photoSnap.data,
-              );
-            },
-          );
-        },
-      ),
+                          return FutureBuilder<String?>(
+                            future: _fetchPhotoUrl(uidStr),
+                            builder: (context, photoSnap) {
+                              return _buildSevakItem(
+                                name: nameStr,
+                                distance: displayLocation,
+                                skills: skillsStr,
+                                phone: phoneStr,
+                                isAvailable: isAvailable,
+                                photoUrl: photoSnap.data,
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    ),
+        ),
+      ],
     );
   }
 
@@ -1315,89 +1466,142 @@ class _SOSScreenState extends State<SOSScreen> {
         ),
       );
     }
-    if (_doctors.isEmpty && !_isLoadingDoctors) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text('🩺', style: TextStyle(fontSize: 48)),
-              const SizedBox(height: 16),
-              const Text(
-                'कोई पंजीकृत पशु चिकित्सक उपलब्ध नहीं है।',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'प्रोफाइल में जाकर Doctor के रूप में पंजीकरण करें!',
-                style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
+
+    final filteredDoctors = _doctors.where((doc) {
+      if (_doctorSearchQuery.trim().isEmpty) return true;
+      final data = doc.data() as Map<String, dynamic>;
+      final String nameStr = (data['name'] ?? '').toString().toLowerCase();
+      final String rawAddress = (data['clinicAddress'] ?? '').toString().toLowerCase();
+      final String q = _doctorSearchQuery.trim().toLowerCase();
+      return nameStr.contains(q) || rawAddress.contains(q);
+    }).toList();
+
+    return Column(
+      children: [
+        _buildSearchBar(
+          controller: _doctorSearchController,
+          focusNode: _doctorSearchFocusNode,
+          query: _doctorSearchQuery,
+          hintText: 'डॉक्टर का नाम या क्लिनिक स्थान खोजें...',
+          activeColor: const Color(0xFFEC4899),
+          onChanged: (val) {
+            setState(() {
+              _doctorSearchQuery = val;
+            });
+          },
+          onClearAndUnfocus: () {
+            _doctorSearchController.clear();
+            setState(() {
+              _doctorSearchQuery = '';
+            });
+            _doctorSearchFocusNode.unfocus();
+            FocusScope.of(context).unfocus();
+          },
         ),
-      );
-    }
-    return RefreshIndicator(
-      onRefresh: _refreshDoctors,
-      color: const Color(0xFFEC4899),
-      child: ListView.builder(
-        controller: _doctorScrollController,
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16),
-        itemCount: _doctors.length + (_hasMoreDoctors ? 1 : 0),
-        itemBuilder: (context, index) {
-          if (index == _doctors.length) {
-            return const Padding(
-              padding: EdgeInsets.symmetric(vertical: 16.0),
-              child: Center(
-                child: CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFEC4899)),
-                ),
-              ),
-            );
-          }
-          final doc = _doctors[index];
-          final data = doc.data() as Map<String, dynamic>;
-          final String uidStr = data['uid'] as String? ?? doc.id;
-          final String nameStr = data['name'] ?? 'Doctor';
-          final String specialization = data['specialization'] ?? '';
-          final String rawAddress = data['clinicAddress'] ?? '';
-          final String phoneStr = data['phone'] ?? '';
-          final int experience = data['experience'] ?? 0;
-          final bool emergencySupport = data['emergencySupport'] ?? false;
+        Expanded(
+          child: _doctors.isEmpty && !_isLoadingDoctors
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Text('🩺', style: TextStyle(fontSize: 48)),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'कोई पंजीकृत पशु चिकित्सक उपलब्ध नहीं है।',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'प्रोफाइल में जाकर Doctor के रूप में पंजीकरण करें!',
+                          style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : filteredDoctors.isEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24.0),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.search_off_rounded, size: 48, color: Color(0xFF94A3B8)),
+                            const SizedBox(height: 12),
+                            Text(
+                              '"$_doctorSearchQuery" के लिए कोई डॉक्टर नहीं मिला।',
+                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : RefreshIndicator(
+                      onRefresh: _refreshDoctors,
+                      color: const Color(0xFFEC4899),
+                      child: ListView.builder(
+                        controller: _doctorScrollController,
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                        itemCount: filteredDoctors.length + (_hasMoreDoctors && _doctorSearchQuery.trim().isEmpty ? 1 : 0),
+                        itemBuilder: (context, index) {
+                          if (index == filteredDoctors.length) {
+                            return const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 16.0),
+                              child: Center(
+                                child: CircularProgressIndicator(
+                                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFEC4899)),
+                                ),
+                              ),
+                            );
+                          }
+                          final doc = filteredDoctors[index];
+                          final data = doc.data() as Map<String, dynamic>;
+                          final String uidStr = data['uid'] as String? ?? doc.id;
+                          final String nameStr = data['name'] ?? 'Doctor';
+                          final String specialization = data['specialization'] ?? '';
+                          final String rawAddress = data['clinicAddress'] ?? '';
+                          final String phoneStr = data['phone'] ?? '';
+                          final int experience = data['experience'] ?? 0;
+                          final bool emergencySupport = data['emergencySupport'] ?? false;
 
-          final double? docLat = data['latitude'] is num ? (data['latitude'] as num).toDouble() : null;
-          final double? docLng = data['longitude'] is num ? (data['longitude'] as num).toDouble() : null;
+                          final double? docLat = data['latitude'] is num ? (data['latitude'] as num).toDouble() : null;
+                          final double? docLng = data['longitude'] is num ? (data['longitude'] as num).toDouble() : null;
 
-          double km = (doc.id.hashCode.abs() % 35 + 12) / 10.0;
-          if (docLat != null && docLng != null && _latitude != null && _longitude != null) {
-            final double meters = Geolocator.distanceBetween(_latitude!, _longitude!, docLat, docLng);
-            km = meters / 1000;
-          }
+                          double km = (doc.id.hashCode.abs() % 35 + 12) / 10.0;
+                          if (docLat != null && docLng != null && _latitude != null && _longitude != null) {
+                            final double meters = Geolocator.distanceBetween(_latitude!, _longitude!, docLat, docLng);
+                            km = meters / 1000;
+                          }
 
-          final String displayAddress = rawAddress.isNotEmpty
-              ? '$rawAddress • ${km.toStringAsFixed(1)} km'
-              : '${km.toStringAsFixed(1)} km';
+                          final String displayAddress = rawAddress.isNotEmpty
+                              ? '$rawAddress • ${km.toStringAsFixed(1)} km'
+                              : '${km.toStringAsFixed(1)} km';
 
-          return FutureBuilder<String?>(
-            future: _fetchPhotoUrl(uidStr),
-            builder: (context, photoSnap) {
-              return _buildDoctorItem(
-                name: nameStr,
-                specialization: specialization,
-                clinicAddress: displayAddress,
-                phone: phoneStr,
-                experience: experience,
-                emergencySupport: emergencySupport,
-                photoUrl: photoSnap.data,
-              );
-            },
-          );
-        },
-      ),
+                          return FutureBuilder<String?>(
+                            future: _fetchPhotoUrl(uidStr),
+                            builder: (context, photoSnap) {
+                              return _buildDoctorItem(
+                                name: nameStr,
+                                specialization: specialization,
+                                clinicAddress: displayAddress,
+                                phone: phoneStr,
+                                experience: experience,
+                                emergencySupport: emergencySupport,
+                                photoUrl: photoSnap.data,
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    ),
+        ),
+      ],
     );
   }
 
