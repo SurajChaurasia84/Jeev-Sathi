@@ -2,14 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:io';
+import 'dart:convert';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
 import '../services/cloudinary_service.dart';
 import '../widgets/safe_avatar.dart';
 
 class EditProfileScreen extends StatefulWidget {
-  const EditProfileScreen({super.key});
+  final bool forceCompleteProfile;
+  const EditProfileScreen({super.key, this.forceCompleteProfile = false});
 
   @override
   State<EditProfileScreen> createState() => _EditProfileScreenState();
@@ -19,9 +23,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
-  final TextEditingController _districtController = TextEditingController();
-  final TextEditingController _villageController = TextEditingController();
+  final TextEditingController _addressController = TextEditingController();
   final TextEditingController _bioController = TextEditingController();
+
+  double? _latitude;
+  double? _longitude;
+  bool _isFetchingLocation = false;
+
 
   bool _isLoading = true;
   bool _isSaving = false;
@@ -43,8 +51,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   void dispose() {
     _nameController.dispose();
     _phoneController.dispose();
-    _districtController.dispose();
-    _villageController.dispose();
+    _addressController.dispose();
     _bioController.dispose();
     super.dispose();
   }
@@ -83,8 +90,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           });
           _nameController.text = data['displayName'] ?? data['name'] ?? _currentUser!.displayName ?? '';
           _phoneController.text = data['phoneNumber'] ?? data['phone'] ?? _currentUser!.phoneNumber ?? '';
-          _districtController.text = data['district'] ?? '';
-          _villageController.text = data['village'] ?? data['address'] ?? '';
+          _addressController.text = data['address'] ?? data['village'] ?? '';
+          _latitude = (data['latitude'] is num) ? (data['latitude'] as num).toDouble() : null;
+          _longitude = (data['longitude'] is num) ? (data['longitude'] as num).toDouble() : null;
           _bioController.text = data['bio'] ?? '';
         }
       } else {
@@ -113,8 +121,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     try {
       final name = _nameController.text.trim();
       final phone = _phoneController.text.trim();
-      final district = _districtController.text.trim();
-      final village = _villageController.text.trim();
+      final address = _addressController.text.trim();
       final bio = _bioController.text.trim();
 
       if (_currentUser != null) {
@@ -171,18 +178,24 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         }
 
         // 2. Update details in Firestore users collection
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(_currentUser!.uid)
-            .set({
+        final Map<String, dynamic> updateData = {
           'displayName': name,
           'name': name,
           'phoneNumber': phone,
-          'district': district,
-          'village': village,
+          'address': address,
           'bio': bio,
           'updatedAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
+        };
+
+        if (_latitude != null && _longitude != null) {
+          updateData['latitude'] = _latitude;
+          updateData['longitude'] = _longitude;
+        }
+
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(_currentUser!.uid)
+            .set(updateData, SetOptions(merge: true));
 
         // 3. Update volunteer details in gau_sevaks collection if exists
         final volunteerRef = FirebaseFirestore.instance
@@ -190,17 +203,23 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             .doc(_currentUser!.uid);
         final volunteerDoc = await volunteerRef.get();
         if (volunteerDoc.exists) {
-          await volunteerRef.update({
+          final Map<String, dynamic> volunteerUpdate = {
             'name': name,
             'phone': phone,
-            'district': district,
-            'village': village,
-          });
+            'address': address,
+          };
+          if (_latitude != null && _longitude != null) {
+            volunteerUpdate['latitude'] = _latitude;
+            volunteerUpdate['longitude'] = _longitude;
+          }
+          await volunteerRef.update(volunteerUpdate);
         }
 
         if (mounted) {
           _showSnackBar('🎉 प्रोफाइल सफलतापूर्वक अपडेट कर दी गई है!');
-          Navigator.pop(context); // Go back to settings screen
+          if (!widget.forceCompleteProfile) {
+            Navigator.pop(context); // Go back to settings screen
+          }
         }
       }
     } catch (e) {
@@ -228,190 +247,365 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 
+  Future<void> _getCurrentLocationAndAddress() async {
+    setState(() {
+      _isFetchingLocation = true;
+    });
+
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        _showSnackBar('कृपया अपने फोन की GPS/लोकेशन सेवा चालू करें।', isError: true);
+        setState(() {
+          _isFetchingLocation = false;
+        });
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          _showSnackBar('स्थान अनुमति (Location permission) अस्वीकार कर दी गई।', isError: true);
+          setState(() {
+            _isFetchingLocation = false;
+          });
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        _showSnackBar('स्थान अनुमति हमेशा के लिए अस्वीकार कर दी गई है। कृपया सेटिंग से अनुमति दें।', isError: true);
+        setState(() {
+          _isFetchingLocation = false;
+        });
+        return;
+      }
+
+      Position position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 10),
+        ),
+      );
+
+      _latitude = position.latitude;
+      _longitude = position.longitude;
+
+      // Reverse geocoding using Nominatim OpenStreetMap
+      final url = Uri.parse(
+        'https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.latitude}&lon=${position.longitude}&zoom=16&addressdetails=1&accept-language=hi,en',
+      );
+      
+      final response = await http.get(url, headers: {
+        'User-Agent': 'JeevSathiApp/1.0',
+      }).timeout(const Duration(seconds: 8));
+
+      bool hasAddress = false;
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = jsonDecode(response.body);
+        final address = data['address'] as Map<String, dynamic>?;
+        if (address != null) {
+          final String? suburb = address['suburb'] ?? address['neighbourhood'] ?? address['residential'];
+          final String? city = address['city'] ?? address['town'] ?? address['village'] ?? address['county'];
+          final String? state = address['state'];
+          final String? postcode = address['postcode'];
+
+          final List<String> parts = [];
+          if (suburb != null && suburb.isNotEmpty) parts.add(suburb);
+          if (city != null && city.isNotEmpty) parts.add(city);
+          if (state != null && state.isNotEmpty) parts.add(state);
+          if (postcode != null && postcode.isNotEmpty) parts.add(postcode);
+
+          if (parts.isNotEmpty) {
+            setState(() {
+              _addressController.text = parts.join(', ');
+            });
+            hasAddress = true;
+          } else if (data['display_name'] != null && data['display_name'].toString().isNotEmpty) {
+            setState(() {
+              _addressController.text = data['display_name'];
+            });
+            hasAddress = true;
+          }
+        }
+      }
+
+      if (hasAddress) {
+        _showSnackBar('📍 स्थान सफलतापूर्वक प्राप्त किया गया!');
+      } else {
+        _showSnackBar('पता (Address) प्राप्त नहीं हो सका।', isError: true);
+      }
+    } catch (e) {
+      _showSnackBar('स्थान प्राप्त करने में त्रुटि: पता प्राप्त नहीं हो सका।', isError: true);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isFetchingLocation = false;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        title: const Text(
-          'Edit Profile',
-          style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+    return PopScope(
+      canPop: !widget.forceCompleteProfile,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _showSnackBar('⚠️ आगे बढ़ने के लिए प्रोफाइल पूरा करना अनिवार्य है।', isError: true);
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF8FAFC),
+        appBar: AppBar(
+          title: const Text(
+            'Edit Profile',
+            style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+          ),
+          backgroundColor: Colors.white,
+          elevation: 0,
+          leading: widget.forceCompleteProfile
+              ? null
+              : IconButton(
+                  icon: const Icon(Icons.arrow_back_ios_new, color: Color(0xFF0F172A), size: 20),
+                  onPressed: () => Navigator.pop(context),
+                ),
         ),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Color(0xFF0F172A), size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF10B981)),
-              ),
-            )
-          : SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    children: [
-                      // Avatar Card
-                      Card(
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          side: const BorderSide(color: Color(0xFFE2E8F0)),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 24.0, horizontal: 16.0),
-                          child: Center(
-                            child: Column(
-                              children: [
-                                GestureDetector(
-                                  onTap: _showImagePickerOptions,
-                                  child: Stack(
-                                    children: [
-                                       SafeNetworkAvatar(
-                                        radius: 46,
-                                        backgroundColor: const Color(0xFF10B981).withValues(alpha: 0.1),
-                                        localFile: _localProfileImage,
-                                        photoUrl: (_localProfileImage == null)
-                                            ? ((_firestorePhotoUrl != null &&
-                                                _firestorePhotoUrl!.isNotEmpty &&
-                                                _firestorePhotoUrl!.startsWith('http'))
-                                                ? _firestorePhotoUrl
-                                                : (_currentUser != null
-                                                    ? _getNetworkProfileUrl(_currentUser!)
-                                                    : null))
-                                            : null,
-                                        fallbackChild: const Icon(Icons.person, size: 46, color: Color(0xFF10B981)),
-                                      ),
-                                      Positioned(
-                                        bottom: 0,
-                                        right: 0,
-                                        child: Container(
-                                          padding: const EdgeInsets.all(4),
-                                          decoration: const BoxDecoration(
-                                            color: Color(0xFF10B981),
-                                            shape: BoxShape.circle,
+        body: _isLoading
+            ? const Center(
+                child: CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF10B981)),
+                ),
+              )
+            : SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      children: [
+                        // Avatar Card
+                        Card(
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            side: const BorderSide(color: Color(0xFFE2E8F0)),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 24.0, horizontal: 16.0),
+                            child: Center(
+                              child: Column(
+                                children: [
+                                  GestureDetector(
+                                    onTap: _showImagePickerOptions,
+                                    child: Stack(
+                                      children: [
+                                         SafeNetworkAvatar(
+                                          radius: 46,
+                                          backgroundColor: const Color(0xFF10B981).withValues(alpha: 0.1),
+                                          localFile: _localProfileImage,
+                                          photoUrl: (_localProfileImage == null)
+                                              ? ((_firestorePhotoUrl != null &&
+                                                  _firestorePhotoUrl!.isNotEmpty &&
+                                                  _firestorePhotoUrl!.startsWith('http'))
+                                                  ? _firestorePhotoUrl
+                                                  : (_currentUser != null
+                                                      ? _getNetworkProfileUrl(_currentUser!)
+                                                      : null))
+                                              : null,
+                                          fallbackChild: const Icon(Icons.person, size: 46, color: Color(0xFF10B981)),
+                                        ),
+                                        Positioned(
+                                          bottom: 0,
+                                          right: 0,
+                                          child: Container(
+                                            padding: const EdgeInsets.all(4),
+                                            decoration: const BoxDecoration(
+                                              color: Color(0xFF10B981),
+                                              shape: BoxShape.circle,
+                                            ),
+                                            child: const Icon(Icons.camera_alt, color: Colors.white, size: 14),
                                           ),
-                                          child: const Icon(Icons.camera_alt, color: Colors.white, size: 14),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    _currentUser?.email ?? 'ईमेल उपलब्ध नहीं है',
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      color: Color(0xFF64748B),
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  const Text(
+                                    'ईमेल बदला नहीं जा सकता है',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Color(0xFF94A3B8),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+  
+                        // Input Fields Card
+                        Card(
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            side: const BorderSide(color: Color(0xFFE2E8F0)),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildFormInput(
+                                  label: 'नाम (Full Name) *',
+                                  hint: 'अपना नाम दर्ज करें',
+                                  controller: _nameController,
+                                  validator: (val) {
+                                    if (val == null || val.trim().isEmpty) {
+                                      return 'कृपया अपना नाम दर्ज करें';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                                const SizedBox(height: 16),
+                                _buildFormInput(
+                                  label: 'मोबाइल नंबर (Mobile Number) *',
+                                  hint: '+91 XXXXX XXXXX',
+                                  controller: _phoneController,
+                                  keyboardType: TextInputType.phone,
+                                  validator: (val) {
+                                    if (val == null || val.trim().isEmpty) {
+                                      return 'कृपया मोबाइल नंबर दर्ज करें';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                                const SizedBox(height: 16),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'पता (Address) *',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13,
+                                        color: Color(0xFF475569),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    TextFormField(
+                                      controller: _addressController,
+                                      readOnly: true,
+                                      maxLines: 2,
+                                      validator: (val) {
+                                        if (val == null || val.trim().isEmpty) {
+                                          return 'कृपया स्थान प्राप्त करें (Fetch Location)';
+                                        }
+                                        return null;
+                                      },
+                                      decoration: InputDecoration(
+                                        hintText: 'नीचे बटन दबाकर स्थान प्राप्त करें',
+                                        hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                                        filled: true,
+                                        fillColor: Colors.grey.shade100,
+                                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                                        ),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                          borderSide: const BorderSide(color: Color(0xFF10B981), width: 1.5),
                                         ),
                                       ),
-                                    ],
-                                  ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: OutlinedButton.icon(
+                                        onPressed: _isFetchingLocation ? null : _getCurrentLocationAndAddress,
+                                        style: OutlinedButton.styleFrom(
+                                          foregroundColor: const Color(0xFF10B981),
+                                          side: const BorderSide(color: Color(0xFF10B981)),
+                                          padding: const EdgeInsets.symmetric(vertical: 12),
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                        ),
+                                        icon: _isFetchingLocation
+                                            ? const SizedBox(
+                                                width: 16,
+                                                height: 16,
+                                                child: CircularProgressIndicator(
+                                                  strokeWidth: 2,
+                                                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF10B981)),
+                                                ),
+                                              )
+                                            : const Icon(Icons.my_location, size: 16),
+                                        label: Text(
+                                          _isFetchingLocation ? 'स्थान प्राप्त किया जा रहा है...' : 'लाइव स्थान प्राप्त करें (Fetch Location)',
+                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  _currentUser?.email ?? 'ईमेल उपलब्ध नहीं है',
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    color: Color(0xFF64748B),
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                const Text(
-                                  'ईमेल बदला नहीं जा सकता है',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: Color(0xFF94A3B8),
-                                  ),
+                                const SizedBox(height: 16),
+                                _buildFormInput(
+                                  label: 'मेरे बारे में (Bio)',
+                                  hint: 'अपने बारे में कुछ वाक्य लिखें (वैकल्पिक)',
+                                  controller: _bioController,
+                                  maxLines: 3,
                                 ),
                               ],
                             ),
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Input Fields Card
-                      Card(
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          side: const BorderSide(color: Color(0xFFE2E8F0)),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildFormInput(
-                                label: 'नाम (Full Name) *',
-                                hint: 'अपना नाम दर्ज करें',
-                                controller: _nameController,
-                                validator: (val) {
-                                  if (val == null || val.trim().isEmpty) {
-                                    return 'कृपया अपना नाम दर्ज करें';
-                                  }
-                                  return null;
-                                },
-                              ),
-                              const SizedBox(height: 16),
-                              _buildFormInput(
-                                label: 'मोबाइल नंबर (Mobile Number)',
-                                hint: '+91 XXXXX XXXXX',
-                                controller: _phoneController,
-                                keyboardType: TextInputType.phone,
-                              ),
-                              const SizedBox(height: 16),
-                              _buildFormInput(
-                                label: 'जिला (District)',
-                                hint: 'अपने जिले का नाम दर्ज करें',
-                                controller: _districtController,
-                              ),
-                              const SizedBox(height: 16),
-                              _buildFormInput(
-                                label: 'गाँव / पता (Village / Address)',
-                                hint: 'अपने गाँव या पते की जानकारी लिखें',
-                                controller: _villageController,
-                              ),
-                              const SizedBox(height: 16),
-                              _buildFormInput(
-                                label: 'मेरे बारे में (Bio)',
-                                hint: 'अपने बारे में कुछ वाक्य लिखें (वैकल्पिक)',
-                                controller: _bioController,
-                                maxLines: 3,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-
-                      // Save Button
-                      _isSaving
-                          ? const Center(
-                              child: CircularProgressIndicator(
-                                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF10B981)),
-                              ),
-                            )
-                          : ElevatedButton(
-                              onPressed: _saveUserProfile,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF10B981),
-                                foregroundColor: Colors.white,
-                                minimumSize: const Size(double.infinity, 52),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
+                        const SizedBox(height: 24),
+  
+                        // Save Button
+                        _isSaving
+                            ? const Center(
+                                child: CircularProgressIndicator(
+                                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF10B981)),
                                 ),
-                                elevation: 0,
+                              )
+                            : ElevatedButton(
+                                onPressed: _saveUserProfile,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF10B981),
+                                  foregroundColor: Colors.white,
+                                  minimumSize: const Size(double.infinity, 52),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                  elevation: 0,
+                                ),
+                                child: const Text(
+                                  'प्रोफ़ाइल सहेजें (Save Profile)',
+                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                ),
                               ),
-                              child: const Text(
-                                'प्रोफ़ाइल सहेजें (Save Profile)',
-                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                              ),
-                            ),
-                      const SizedBox(height: 20),
-                    ],
+                        const SizedBox(height: 20),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
+      ),
     );
   }
 
