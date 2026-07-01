@@ -58,5 +58,7 @@
 	<string>This app requires access to your camera to capture photos for animal rescue reports and profile updates.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>This app requires access to your photo library to select photos for animal rescue reports and profile updates.</string>
+	<key>GADApplicationIdentifier</key>
+	<string>ca-app-pub-8234500750734669~1387303083</string>
 </dict>
 </plist>
