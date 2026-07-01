@@ -859,6 +859,19 @@ class _HomeScreenState extends State<HomeScreen> {
       String finalMsg = "🚨 आपातकालीन अलर्ट!\nप्रेषक: $senderName\n\n$msg";
       if (currentPosition != null) {
         finalMsg += "\n\n📍 लाइव स्थान: ${currentPosition.latitude}, ${currentPosition.longitude}\n🔗 Google Maps Link: https://maps.google.com/?q=${currentPosition.latitude},${currentPosition.longitude}";
+        
+        final currentUser = FirebaseAuth.instance.currentUser;
+        if (currentUser != null) {
+          FirebaseFirestore.instance
+              .collection('users')
+              .doc(currentUser.uid)
+              .set({
+            'latitude': currentPosition.latitude,
+            'longitude': currentPosition.longitude,
+          }, SetOptions(merge: true)).catchError((e) {
+            debugPrint('Failed to sync coordinates to users collection in home: $e');
+          });
+        }
       }
 
       // Show trigger/send loader
