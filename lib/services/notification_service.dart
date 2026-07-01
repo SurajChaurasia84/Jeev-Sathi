@@ -18,18 +18,22 @@ class NotificationService {
   // Public API
   // ──────────────────────────────────────────────────────────────────────────
 
-  /// Broadcasts a New SOS notification to ALL installed users
+  /// Broadcasts a New SOS notification to ALL installed users within a 5 km radius
   /// except the person who posted the SOS ([reporterId]).
   static Future<void> notifyNewSOS({
     required String reporterId,
     required String animal,
     required String description,
     required String reportId,
+    required double latitude,
+    required double longitude,
   }) async {
     await _post('/api/notify-all', {
       'reporterId': reporterId,
       'title': '🚨 आपातकालीन अलर्ट: $animal रेस्क्यू',
       'body': description.isNotEmpty ? description : 'मदद की आवश्यकता है। तुरंत मदद करें!',
+      'latitude': latitude,
+      'longitude': longitude,
       'data': {
         'type': 'new_sos',
         'id': reportId,
