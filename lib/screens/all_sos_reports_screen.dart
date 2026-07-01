@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'sos_report_detail_screen.dart';
+import '../widgets/banner_ad_widget.dart';
 
 class AllSOSReportsScreen extends StatefulWidget {
   const AllSOSReportsScreen({super.key});
@@ -143,6 +144,7 @@ class _AllSOSReportsScreenState extends State<AllSOSReportsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
+      bottomNavigationBar: const BannerAdWidget(),
       appBar: AppBar(
         title: const Text(
           'सभी SOS रिपोर्ट्स (All SOS Reports)',
